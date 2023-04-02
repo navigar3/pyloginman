@@ -40,8 +40,12 @@
 #include <xf86drm.h>
 #include <xf86drmMode.h>
 
-struct modeset_buf;
-struct modeset_dev;
+#define __DRM_SPLASH4SLACK_GLOBALS
+#include "drm-splash4slack.h"
+
+
+//struct modeset_buf;
+//struct modeset_dev;
 static int modeset_find_crtc(int fd, drmModeRes *res, drmModeConnector *conn,
 			     struct modeset_dev *dev);
 static int modeset_create_fb(int fd, struct modeset_buf *buf);
@@ -50,8 +54,8 @@ static int modeset_setup_dev(int fd, drmModeRes *res, drmModeConnector *conn,
 			     struct modeset_dev *dev);
 static int modeset_open(int *out, const char *node);
 static int modeset_prepare(int fd);
-static void modeset_draw(int fd);
-static void modeset_cleanup(int fd);
+//static void modeset_draw(int fd);
+//static void modeset_cleanup(int fd);
 
 /*
  * modeset_open() stays the same as before.
@@ -100,6 +104,7 @@ static int modeset_open(int *out, const char *node)
  * Everything else stays the same.
  */
 
+/*
 struct modeset_buf {
 	uint32_t width;
 	uint32_t height;
@@ -109,6 +114,7 @@ struct modeset_buf {
 	uint8_t *map;
 	uint32_t fb;
 };
+
 
 struct modeset_dev {
 	struct modeset_dev *next;
@@ -123,6 +129,10 @@ struct modeset_dev {
 };
 
 static struct modeset_dev *modeset_list = NULL;
+*/
+
+static struct modeset_dev *modeset_list = NULL;
+int drm_fd;
 
 /*
  * modeset_prepare() stays the same.
@@ -433,36 +443,36 @@ static void modeset_destroy_fb(int fd, struct modeset_buf *buf)
  * the current front-buffer and use this framebuffer for drmModeSetCrtc().
  */
 
-int main(int argc, char **argv)
+int drm_init(char *card)
 {
-	int ret, fd;
-	const char *card;
+	int ret;
+	//const char *card;
 	struct modeset_dev *iter;
 	struct modeset_buf *buf;
 
 	/* check which DRM device to open */
-	if (argc > 1)
-		card = argv[1];
-	else
-		card = "/dev/dri/card0";
+	//if (argc > 1)
+	//	card = argv[1];
+	//else
+	//	card = "/dev/dri/card0";
 
 	fprintf(stderr, "using card '%s'\n", card);
 
 	/* open the DRM device */
-	ret = modeset_open(&fd, card);
+	ret = modeset_open(&drm_fd, card);
 	if (ret)
 		goto out_return;
 
 	/* prepare all connectors and CRTCs */
-	ret = modeset_prepare(fd);
+	ret = modeset_prepare(drm_fd);
 	if (ret)
 		goto out_close;
 
 	/* perform actual modesetting on each found connector+CRTC */
 	for (iter = modeset_list; iter; iter = iter->next) {
-		iter->saved_crtc = drmModeGetCrtc(fd, iter->crtc);
+		iter->saved_crtc = drmModeGetCrtc(drm_fd, iter->crtc);
 		buf = &iter->bufs[iter->front_buf];
-		ret = drmModeSetCrtc(fd, iter->crtc, buf->fb, 0, 0,
+		ret = drmModeSetCrtc(drm_fd, iter->crtc, buf->fb, 0, 0,
 				     &iter->conn, 1, &iter->mode);
 		if (ret)
 			fprintf(stderr, "cannot set CRTC for connector %u (%d): %m\n",
@@ -470,15 +480,16 @@ int main(int argc, char **argv)
 	}
 
 	/* draw some colors for 5seconds */
-	modeset_draw(fd);
+	//modeset_draw(fd);
 
 	/* cleanup everything */
-	modeset_cleanup(fd);
+	//modeset_cleanup(fd);
 
 	ret = 0;
 
 out_close:
-	close(fd);
+  if (ret)
+    close(drm_fd);
 out_return:
 	if (ret) {
 		errno = -ret;
@@ -541,7 +552,7 @@ static uint8_t next_color(bool *up, uint8_t cur, unsigned int mod)
  * vertical-sync.
  */
 
-static void modeset_draw(int fd)
+void modeset_draw(int fd)
 {
 	uint8_t r, g, b;
 	bool r_up, g_up, b_up;
@@ -589,7 +600,7 @@ static void modeset_draw(int fd)
  * modeset_destroy_fb() instead of accessing the framebuffers directly.
  */
 
-static void modeset_cleanup(int fd)
+void modeset_cleanup(int fd)
 {
 	struct modeset_dev *iter;
 
