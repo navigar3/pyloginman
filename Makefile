@@ -5,13 +5,16 @@ LDFLAGS+=-ldrm
 
 all: drm-splash4slack
 
+kbd-handler.o: kbd-handler.c
+	$(CC) -c $(CFLAGS) -o $@ $?
+
 drm-splash4slack.o: drm-splash4slack.c
-	 $(CC) -c $(CFLAGS) -o $@ $?
+	$(CC) -c $(CFLAGS) -o $@ $?
 
 main.o: main.c
 	$(CC) -c $(CFLAGS) -o $@ $?
 
-drm-splash4slack: drm-splash4slack.o main.o
+drm-splash4slack: drm-splash4slack.o kbd-handler.o main.o
 	$(CC) $(CFLAGS) -o $@ $^ $(LDFLAGS)
 
 clean:

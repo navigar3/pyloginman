@@ -595,6 +595,48 @@ void modeset_draw(int fd)
 	}
 }
 
+void modeset_draw_once(int fd)
+{
+	static uint8_t r = 0x00;
+  static uint8_t g = 0xa0;
+  static uint8_t b = 0x58;
+	bool r_up, g_up, b_up;
+	unsigned int j, k, off;
+	struct modeset_dev *iter;
+	struct modeset_buf *buf;
+	int ret;
+
+	srand(time(NULL));
+	r += 0x40;
+	g += 0x50;
+	b += 0x80;
+	r_up = g_up = b_up = true;
+
+  r = next_color(&r_up, r, 20);
+  g = next_color(&g_up, g, 10);
+  b = next_color(&b_up, b, 5);
+
+  for (iter = modeset_list; iter; iter = iter->next) {
+    buf = &iter->bufs[iter->front_buf ^ 1];
+    for (j = 0; j < buf->height; ++j) {
+      for (k = 0; k < buf->width; ++k) {
+        off = buf->stride * j + k * 4;
+        *(uint32_t*)&buf->map[off] =
+               (r << 16) | (g << 8) | b;
+      }
+    }
+
+    ret = drmModeSetCrtc(fd, iter->crtc, buf->fb, 0, 0,
+             &iter->conn, 1, &iter->mode);
+    if (ret)
+      fprintf(stderr, "cannot flip CRTC for connector %u (%d): %m\n",
+        iter->conn, errno);
+    else
+      iter->front_buf ^= 1;
+  }
+
+}
+
 /*
  * modeset_cleanup() stays the same as before. But it now calls
  * modeset_destroy_fb() instead of accessing the framebuffers directly.

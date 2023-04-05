@@ -9,6 +9,7 @@
 
 int drm_init(char *);
 void modeset_draw(int);
+void modeset_draw_once(int);
 void modeset_cleanup(int);
 
 struct modeset_buf {
