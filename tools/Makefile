@@ -1,12 +1,17 @@
+CFLAGS+=-I..
+
 .PHONY: clean
 
-all: hashtable
+all: main
 
-hashtable.o: hashtable.c
-	$(CC) -c $(CFLAGS) -o $@ $?
+hashtable.o: hashtable.c hashtable.h ../cobj.h
+	$(CC) -c $(CFLAGS) -o $@ $<
 
-hashtable: hashtable.o
-	$(CC) $(CFLAGS) -o $@ $?
+main.o: main.c hashtable.h ../cobj.h
+	$(CC) -c $(CFLAGS) -o $@ $<
+
+main: main.o hashtable.o
+	$(CC) $(CFLAGS) -o $@ $^
 
 clean:
-	rm -f *.o drm-splash4slack
+	rm -f *.o main

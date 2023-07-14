@@ -11,6 +11,9 @@
 #include <unistd.h>
 #include <errno.h>
 
+#include "cobj.h"
+
+#define _HASHTABLE_H_PRIVATE
 #include "hashtable.h"
 
 
@@ -37,120 +40,54 @@ void * hmalloc(size_t s)
   return ptr;
 }
 
-/* Top level section. */
-//data_t data = {HT_VERSION, 0, 0, NULL};
-
-/* Only one metadata field is allowed. */
-//smeta_t smeta = {0, (struct smeta_block *)NULL};
-
-
-/* ************************* */
-/* Metadata section methods. */
-int add_meta_field(
-  smeta_t * sm,
-  uint16_t name_len,
-  uint16_t value_len,
-  char * name,
-  char * value
-)
-{
-  struct smeta_block * block;
-  struct smeta_block ** last_block;
-  
-  /* Allocate and set to zero memory for the new item pointers. */
-  block = hcalloc(1, sizeof(struct smeta_block));
-  
-  /* Allocate and set to zero memory for the new item content. */
-  block->field_content = hcalloc(1, sizeof(struct smeta_field));
-  
-  /* Fill field. */
-  block->field_content->propname_len = name_len;
-  block->field_content->propval_len = value_len;
-  block->field_content->propname.p = hmalloc(name_len * sizeof(char));
-  block->field_content->propname.pt = P_dyn;
-  block->field_content->propval.p = hmalloc(value_len * sizeof(char));
-  block->field_content->propval.pt = P_dyn;
-  memcpy(block->field_content->propname.p, name, name_len);
-  memcpy(block->field_content->propval.p, value, value_len);
-  
-  /* Push new item into list */
-  last_block = &(sm->list);
-  while(*last_block)
-    last_block = &((*last_block)->next_field);
-  *last_block = block;
-  
-  /* Update section lenght. */
-  sm->seclen += (name_len + value_len + 
-                   sizeof(block->field_content->propname_len) +
-                   sizeof(block->field_content->propval_len));
-  
-  return 0;
-}
-
-/* Metadata section methods ends. */
-/* ****************************** */
-
-
-/* **********************/
-/* Prop section methods */
-
-/* Prop section methods ends. */
-/* ****************************/
-
-
-/**************/
-/* New object */
-void * newobj(int (*init_fun)(void*, void*),
-              size_t osz, 
-              void * init_par)
-{
-  genobj * newo;
-  
-  newo = hcalloc(1, osz);
-  
-  newo->init = init_fun;
-  
-  if(newo->init(newo, init_par))
-    perrandexit("Failed to create object.");
-  
-  return newo;
-}
-/* */
-/***/
-
 /***********************************/
-/* Implement buffer object methods */
-int _buffer_realloc(buffer *this, size_t newsz)
+/* Implement buffer class methods */
+#ifndef _CLASS_NAME
+#define _CLASS_NAME buffer
+
+thisclass_creator
+
+int clsm(_realloc, size_t newsz)
 {
-  size_t newsize = (newsz) ? newsz : this->msize + this->newwinsz;
+  size_t newsize = (newsz) ? newsz : this->_msize + this->_newwinsz;
   
-  if (!(this->addr = 
-          mremap(this->addr, this->msize, newsize,  MREMAP_MAYMOVE)))
+  if (!(this->_addr = 
+          mremap(this->_addr, this->_msize, newsize,  MREMAP_MAYMOVE)))
     perrandexit("mremap()");
   
-  this->msize = newsize;
+  this->_msize = newsize;
   
   return 0;
 }
 
-int _buffer_write(buffer *this, size_t bsz, char * p)
+int clsm(write, size_t bsz, void * p)
 {
-  if (this->used + bsz > this->msize)
+  if (this->_used + bsz > this->_msize)
     CALL(this, _realloc, 0);
   
-  char * sp = this->addr + this->used;
+  char * sp = this->_addr + this->_used;
   
   for (size_t i = 0; i<bsz; i++, sp++, p++)
-    *sp = *p;
+    *sp = *((char *)p);
   
-  this->used += bsz;
+  this->_used += bsz;
   
   return 0;
 }
 
-int _buffer_destroy(buffer *this)
+size_t clsm(get_mapsz)
 {
-  if (munmap(this->addr, this->msize))
+  return this->_used;
+}
+
+char * clsm(get_map)
+{
+  return this->_addr;
+}
+
+int clsm(destroy)
+{
+  if (munmap(this->_addr, this->_msize))
     perrandexit("munmap()");
   
   free(this);
@@ -158,38 +95,44 @@ int _buffer_destroy(buffer *this)
   return 0;
 }
 
-int _buffer_init(void * t, void * init_params)
+int clsm(init, void * init_params)
 {
-  buffer * this = (buffer *)t;
-   
+  clsmlnk(_realloc);
+  clsmlnk(write);
+  clsmlnk(destroy);
+  clsmlnk(get_map);
+  clsmlnk(get_mapsz);
+  
   size_t sz = (init_params) ? *((int *)init_params) : 4096;
   
-  if (!(this->addr = 
+  if (!(this->_addr = 
           mmap(NULL, sz, 
                PROT_READ | PROT_WRITE, MAP_SHARED | MAP_ANONYMOUS, 
                -1, 0)
        )
      )
     return 1;
-  
-  this->_realloc = _buffer_realloc;
-  this->write = _buffer_write;
-  this->destroy = _buffer_destroy;
     
-  this->msize = sz;
-  this->used = 0;
-  this->newwinsz = 4096;
+  this->_msize = sz;
+  this->_used = 0;
+  this->_newwinsz = 4096;
   
   return 0;
 }
+
+#endif
+#undef _CLASS_NAME
 /* buffer object methods ends. */
 /*******************************/
 
 /**************************************/
 /* Implement hashtable object methods */
+#ifndef _CLASS_NAME
+#define _CLASS_NAME hashtable
 
-uint32_t _hashtable_compute_hash(hashtable * this, uint32_t keysize,
-                                 char * key)
+thisclass_creator
+
+uint32_t clsm(compute_hash, uint32_t keysize, char * key)
 {
   uint32_t modulo = 0;
     
@@ -218,8 +161,7 @@ uint32_t _hashtable_compute_hash(hashtable * this, uint32_t keysize,
 }
 
 /* Push element into hashtable list */
-int _hashtable_push_into_list(hashtable * this, uint32_t keysize,
-                              char * key, void * data)
+int clsm(push_into_list, uint32_t keysize, char * key, void * data)
 {
   
   return 0;
@@ -228,19 +170,30 @@ int _hashtable_push_into_list(hashtable * this, uint32_t keysize,
 
 /* Private _newentry method macro generator: 
  * add new entry into hash array/list */
-#define fungen_hashtable__newentry_part_ff
+#define fungen_hashtable__newentry_part_ff \
+  newentry->contentp.p = data; \
+  newentry->contentp.pt = dt;
 #define fungen_hashtable__newentry_part_fn \
-  newentry->contentsize = datasize;
+  newentry->contentsize = datasize; \
+  newentry->contentp.p = data; \
+  newentry->contentp.pt = dt;
 #define fungen_hashtable__newentry_part_nf \
-  newentry->keysize = keysize;
+  newentry->keysize = keysize; \
+  newentry->contentp.p = data; \
+  newentry->contentp.pt = dt;
 #define fungen_hashtable__newentry_part_nn \
   newentry->keysize = keysize; \
-  newentry->contentsize = datasize;
+  newentry->contentsize = datasize; \
+  newentry->contentp.p = data; \
+  newentry->contentp.pt = dt;
+#define fungen_hashtable__newentry_part_kf
+#define fungen_hashtable__newentry_part_kn \
+  newentry->keysize = keysize;
 #define fungen_hashtable__newentry(PF) \
 void * _hashtable__newentry_ ## PF \
 ( \
-  hashtable * this, \
-  uint32_t keysize, pointer_type kt, char * key, \
+  void * _this, \
+  keysize_t keysize, pointer_type kt, char * key, \
   uint32_t datasize, pointer_type dt, void * data \
 ) \
 { \
@@ -253,9 +206,6 @@ void * _hashtable__newentry_ ## PF \
   newentry->keyp.p = key; \
   newentry->keyp.pt = kt; \
   \
-  newentry->contentp.p = data; \
-  newentry->contentp.pt = dt; \
-  \
   return newentry; \
 }
 
@@ -263,11 +213,15 @@ fungen_hashtable__newentry(ff)
 fungen_hashtable__newentry(fn)
 fungen_hashtable__newentry(nn)
 fungen_hashtable__newentry(nf)
+fungen_hashtable__newentry(kf)
+fungen_hashtable__newentry(kn)
 
 #undef fungen_hashtable__newentry_part_ff
 #undef fungen_hashtable__newentry_part_fn
 #undef fungen_hashtable__newentry_part_nn
 #undef fungen_hashtable__newentry_part_nf
+#undef fungen_hashtable__newentry_part_kf
+#undef fungen_hashtable__newentry_part_kn
 #undef fungen_hashtable__newentry
 /* */
 
@@ -285,9 +239,9 @@ fungen_hashtable__newentry(nf)
  *                      resptr is not null;
  *                   c) return -1. */
 int _hashtable__lookup_into_class_array_n(
-  hashtable * this, 
+  void * _this, 
   void * modclass,
-  uint32_t keysize, char * key,
+  keysize_t keysize, char * key,
   void * resptr, struct lookup_res * ls)
 {
   hashentry_nn_t ** entry = (hashentry_nn_t **)
@@ -328,10 +282,13 @@ int _hashtable__lookup_into_class_array_n(
         if (ls)
         {
           ls->key = (*entry)->keyp.p;
-          ls->content = (*entry)->contentp.p;
           ls->keysize = (*entry)->keysize;
-          if (this->_htp->has_fixed_size)
-            ls->contentsize = (*entry)->contentsize;
+          if (! this->_htp->has_only_key)
+          {
+            ls->content = (*entry)->contentp.p;
+            if (this->_htp->has_fixed_size)
+              ls->contentsize = (*entry)->contentsize;
+          }
         }
         
         return 0;
@@ -361,9 +318,9 @@ int _hashtable__lookup_into_class_array_n(
  *                      resptr is not null;
  *                   c) return -1. */
 int _hashtable__lookup_into_class_array_f(
-  hashtable * this, 
+  void * _this, 
   void * modclass,
-  uint32_t keysize, char * key,
+  keysize_t keysize, char * key,
   void * resptr, struct lookup_res * ls)
 {
   hashentry_nn_t ** entry = (hashentry_nn_t **)
@@ -392,10 +349,13 @@ int _hashtable__lookup_into_class_array_f(
     if (ls)
     {
       ls->key = (*entry)->keyp.p;
-      ls->content = (*entry)->contentp.p;
       ls->keysize = (*entry)->keysize;
-      if (this->_htp->has_fixed_size)
-        ls->contentsize = (*entry)->contentsize;
+      if (! this->_htp->has_only_key)
+      {
+        ls->content = (*entry)->contentp.p;
+        if (this->_htp->has_fixed_size)
+          ls->contentsize = (*entry)->contentsize;
+      }
     }
     
     return 0;
@@ -409,23 +369,40 @@ int _hashtable__lookup_into_class_array_f(
 }
 /* */
 
-/* Push element into hashtable */
-int _hashtable_push_into_array(
-  hashtable * this, uint32_t keysize, 
-  pointer_type kt, char * key, uint32_t datasize, 
-  pointer_type dt, void * data)
-{ 
-  /* Compute key hash */ 
+/* Public method lookup */
+int clsm(lookup, keysize_t keysize, char * key, 
+         void * resptr, struct lookup_res * lr)
+{
   uint32_t keyhash = CALL(this, compute_hash, 
                           (this->_htp->has_fixed_key_size) ? 
                           this->_htp->key_size : keysize, key);
+  
+  return CALL(this, _lookup_into_class, pha(this->_ht, keyhash),
+                    keysize, key, resptr, lr);
+}
+/* */
+
+/* Push element into hashtable */
+int clsm(push_into_array, 
+  keysize_t keysize, pointer_type kt, char * key, 
+  uint32_t datasize, pointer_type dt, void * data, void * precomp_hash)
+{
+  uint32_t keyhash;
+  
+  if (precomp_hash)
+    keyhash = *((uint32_t *)precomp_hash);
+  else
+    /* Compute key hash */ 
+    keyhash = CALL(this, compute_hash, 
+                   (this->_htp->has_fixed_key_size) ? 
+                   this->_htp->key_size : keysize, key);
   
   hashentry_t ** he, * ne;
   
   /* Allocate new item and set it */
   ne = CALL(this, _newentry, 
-            keysize, P_unspec, key, 
-            datasize, P_unspec, data);
+            keysize, kt, key, 
+            datasize, kt, data);
   
   /* find new item position in list */
   int lkres = CALL(this, _lookup_into_class, pha(this->_ht, keyhash),
@@ -446,7 +423,7 @@ int _hashtable_push_into_array(
 /* */
 
 /* Fill sample data (debug purpose) */
-int _hashtable_fill_sample_data(hashtable * this)
+int clsm(fill_sample_data)
 {
   if (this->_htp)
     perrandexit("fill_sample_data(): htp struct is not NULL!\n");
@@ -456,6 +433,12 @@ int _hashtable_fill_sample_data(hashtable * this)
   ht_props_t * htp = this->_htp;
   
   htp->seclen = 0;
+  
+  htp->ver_major = 0;
+  htp->seclen += sizeof(htp->ver_major);
+  
+  htp->ver_minor = 1;
+  htp->seclen += sizeof(htp->ver_minor);
   
   htp->hash_algo = hmalloc(strlf("mod"));
   memcpy(htp->hash_algo, "mod", strlf("mod"));
@@ -471,7 +454,7 @@ int _hashtable_fill_sample_data(hashtable * this)
   htp->hash_modulus = 10;
   htp->seclen += sizeof(htp->hash_modulus);
   
-  htp->has_key = True;
+  htp->has_only_key = False;
   htp->seclen += 1;
   
   htp->has_fixed_key_size = False;
@@ -505,11 +488,11 @@ int _hashtable_fill_sample_data(hashtable * this)
     };
   
   for (int i=0; *meta_fields_test[i]; i++)
-    add_meta_field(sm,
-                   strlen(meta_fields_test[i][0])+1,
-                   strlen(meta_fields_test[i][1])+1,
-                   (char *)meta_fields_test[i][0],
-                   (char *)meta_fields_test[i][1]);
+    CALL(this, _add_meta_field, sm,
+         strlen(meta_fields_test[i][0])+1,
+         strlen(meta_fields_test[i][1])+1,
+         (char *)meta_fields_test[i][0],
+         (char *)meta_fields_test[i][1]);
   
   CALL(this, _append_section, HT_SECTION_META, sm);
   
@@ -518,7 +501,7 @@ int _hashtable_fill_sample_data(hashtable * this)
 /* */
 
 /* Print sample data (debug purpose) */
-int _hashtable_print_sample_data(hashtable * this)
+int clsm(print_sample_data)
 {
   char *_vtype[] = {"Dyn", "Stat", "Unspec"};
   
@@ -551,15 +534,48 @@ int _hashtable_print_sample_data(hashtable * this)
       printf("Properties section.\n");
       
       printf(" seclen: %d\n", htp->seclen);
+      printf(" ver_major: %d\n", htp->ver_major);
+      printf(" ver_minor: %d\n", htp->ver_minor);
       printf(" hash_algo: %s\n", htp->hash_algo);
       printf(" hash_dl_helper: %s\n", htp->hash_dl_helper);
       printf(" hash_modulus: %d\n", htp->hash_modulus);
-      printf(" has_key: %d\n", htp->has_key);
+      printf(" has_only_key: %d\n", htp->has_only_key);
       printf(" has_fixed_key_size: %d\n", htp->has_fixed_key_size);
       printf(" key_size: %d\n", htp->key_size);
       printf(" has_full_hash_array: %d\n", htp->has_full_hash_array);
       printf(" has_fixed_size: %d\n", htp->has_fixed_size);
       printf(" fixed_size_len: %d\n", htp->fixed_size_len);
+    }
+    
+    else if (p->sectype == HT_SECTION_DATA)
+    {
+      printf("Data section.\n");
+      
+      printf("Entries found:\n");
+      
+      for (int imod = 0; 
+           imod < this->_htp->hash_modulus; 
+           imod++)
+      {
+        fprintf(stderr, "modulus=%d\n", imod);
+        
+        hashentry_nn_t * ne = 
+          (hashentry_nn_t *)(pha(this->_ht, imod)->first_entry);
+        while(ne)
+        {
+          fprintf(stderr, "   keysize=%d\n"
+                          "    key=%s\n"
+                          "    datasize=%d\n"
+                          "    data=%s\n",
+                  ne->keysize,
+                  ne->keyp.p,
+                  ne->contentsize,
+                  ne->contentp.p
+                 );
+          ne = ne->next_entry;
+        }
+        
+      }
     }
     
     else
@@ -569,9 +585,49 @@ int _hashtable_print_sample_data(hashtable * this)
   return 0;
 }
 
+/* Add meta field in metadata section */
+int clsm(_add_meta_field,
+  smeta_t * sm,
+  uint16_t name_len, uint16_t value_len,
+  char * name, char * value
+)
+{
+  struct smeta_block * block;
+  struct smeta_block ** last_block;
+  
+  /* Allocate and set to zero memory for the new item pointers. */
+  block = hcalloc(1, sizeof(struct smeta_block));
+  
+  /* Allocate and set to zero memory for the new item content. */
+  block->field_content = hcalloc(1, sizeof(struct smeta_field));
+  
+  /* Fill field. */
+  block->field_content->propname_len = name_len;
+  block->field_content->propval_len = value_len;
+  block->field_content->propname.p = hmalloc(name_len * sizeof(char));
+  block->field_content->propname.pt = P_dyn;
+  block->field_content->propval.p = hmalloc(value_len * sizeof(char));
+  block->field_content->propval.pt = P_dyn;
+  memcpy(block->field_content->propname.p, name, name_len);
+  memcpy(block->field_content->propval.p, value, value_len);
+  
+  /* Push new item into list */
+  last_block = &(sm->list);
+  while(*last_block)
+    last_block = &((*last_block)->next_field);
+  *last_block = block;
+  
+  /* Update section lenght. */
+  sm->seclen += (name_len + value_len + 
+                   sizeof(block->field_content->propname_len) +
+                   sizeof(block->field_content->propval_len));
+  
+  return 0;
+}
+/* */
+
 /* Append new section */
-int _hashtable__append_section(hashtable * this, 
-                               uint32_t stype, void * s)
+int clsm(_append_section, uint32_t stype, void * s)
 {
   section_t * new_section, ** last_section;
   
@@ -593,8 +649,7 @@ int _hashtable__append_section(hashtable * this,
 /* */
 
 /* Load props section */
-int _hashtable__load_props_section(hashtable * this, 
-                                   char * secaddr, uint64_t seclen)
+int clsm(_load_props_section, char * secaddr, uint64_t seclen)
 {
   if (this->_htp)
     perrandexit("_load_props_section(): _htp is not NULL!\n");
@@ -613,8 +668,7 @@ int _hashtable__load_props_section(hashtable * this,
 /* */
 
 /* Load meta section */
-int _hashtable__load_meta_section(hashtable * this, 
-                                  char * secaddr, uint64_t seclen)
+int clsm(_load_meta_section, char * secaddr, uint64_t seclen)
 {
   uint64_t seccur = 0;
   smeta_t * new_meta = hcalloc(1, sizeof(smeta_t));
@@ -651,8 +705,95 @@ int _hashtable__load_meta_section(hashtable * this,
 }
 /* */
 
+#define _CAST_LOAD(_p_src, _dst, _offs) \
+  { \
+    unsigned int sz = sizeof(_dst); \
+    char * _p_dst = (char *)(&(_dst)); \
+    char * __p_src = (char *)(_p_src); \
+    \
+    for (unsigned int i = 0; i < sz; *(_p_dst+i) = *(__p_src+i), i++); \
+    _offs += sz; \
+  }
+
+/* Load entry */
+int _hashtable__load_entry_nn(void * _this, char * mp,
+                              keysize_t * ks, char ** key,
+                              uint32_t * ds, void ** data)
+{
+  uint64_t _mp_offs = 0;
+  
+  //keysize_t _ks;
+  //uint32_t _ds;
+  
+  _CAST_LOAD(mp, *ks, _mp_offs)
+  *key = mp + _mp_offs;
+  _mp_offs += (uint64_t)(*ks);
+  
+  _CAST_LOAD(mp+_mp_offs, *ds, _mp_offs)
+  *data = mp + _mp_offs;
+  _mp_offs += (uint64_t)(*ds);
+  
+  //Debug
+  //fprintf(stderr, " ****** keysz=%d, datasz=%d, addr=%x\n", 
+  //        *ks, *ds, *key);
+  
+  return _mp_offs;
+}
+/* */
+
+/* Load full hash array */
+int _hashtable__load_full_ha(void * _this, char * mp)
+{
+  uint64_t mp_offs = 0;
+  typeof(this->_num_of_entries) nl = 0;
+  
+  /* First load _num_of_entries */
+  _CAST_LOAD(mp, this->_num_of_entries, mp_offs)
+  
+  /* Now load entries */
+  for ( ; nl<this->_num_of_entries; nl++)
+  {
+    keysize_t ks;
+    uint32_t ds;
+    char *pkey;
+    void *pdata;
+    
+    typeof(this->_htp->hash_modulus) hme;
+    typeof(((hasharray_t *)(this->_ht))->num_of_entries) ne;
+    
+    _CAST_LOAD(mp+mp_offs, hme, mp_offs)
+    _CAST_LOAD(mp+mp_offs, ne, mp_offs)
+    
+    for (unsigned int j = 0; j < ne; j++)
+    {
+      fprintf(stderr, "--->hme=%d, ne=%d\n", hme, ne);
+    
+      mp_offs += 
+        _hashtable__load_entry_nn(_this, mp+mp_offs, 
+                                  &ks, &pkey, &ds, &pdata);
+    
+      CALL(this, push, ks, P_unspec, pkey, ds, P_unspec, pdata, &hme);
+    }
+  }
+  
+  return 0;
+}
+/* */
+
+/* Load data section */
+int clsm(_load_data_section, char * secaddr, uint64_t seclen)
+{
+  sdata_t * new_data = hcalloc(1, sizeof(sdata_t));
+  CALL(this, _append_section, HT_SECTION_DATA, new_data);
+  
+  _hashtable__load_full_ha(_this, secaddr);
+  
+  return 0;
+}
+/* */
+
 /* Load data from file */
-int _hashtable__load_data_from_file(hashtable * this, char *file_name)
+int clsm(_load_data_from_file, char *file_name)
 {
   int fd;
   struct stat sb;
@@ -695,15 +836,24 @@ int _hashtable__load_data_from_file(hashtable * this, char *file_name)
     uint64_t seclen = *((uint64_t *)(fmap+mapcur));
     mapcur += sizeof(seclen);
     
-    if (sectype == HT_SECTION_META)
+    
+    if (sectype == HT_SECTION_PROPS)
+    {
+      CALL(this, _load_props_section, fmap+mapcur, seclen);
+      mapcur += seclen;
+      
+      CALL(this, _initialize_data_sec);
+    }
+    
+    else if (sectype == HT_SECTION_META)
     {
       CALL(this, _load_meta_section, fmap+mapcur, seclen);
       mapcur += seclen;
     }
     
-    else if (sectype == HT_SECTION_PROPS)
+    else if (sectype == HT_SECTION_DATA)
     {
-      CALL(this, _load_props_section, fmap+mapcur, seclen);
+      CALL(this, _load_data_section, fmap+mapcur, seclen);
       mapcur += seclen;
     }
       
@@ -720,8 +870,7 @@ int _hashtable__load_data_from_file(hashtable * this, char *file_name)
 /* */
 
 /* Write data meta */
-int _hashtable__write_data_meta(hashtable * this, 
-                                int fd, smeta_t * metadata)
+int clsm(_write_data_meta, int fd, smeta_t * metadata)
 {
   for (struct smeta_block * block = metadata->list; block; 
            block = block->next_field)
@@ -740,13 +889,105 @@ int _hashtable__write_data_meta(hashtable * this,
 }
 /* */
 
+/* Private _fill_buffer method macro generator: 
+ * add new entry into hash array/list */
+#define fungen_hashtable__fill_buff_part_ff \
+  CALL(b, write, this->_htp->key_size, e->keyp.p); \
+  CALL(b, write, this->_htp->fixed_size_len, e->contentp.p);
+#define fungen_hashtable__fill_buff_part_fn \
+  CALL(b, write, this->_htp->key_size, e->keyp.p); \
+  CALL(b, write, sizeof(e->contentsize), &(e->contentsize)); \
+  CALL(b, write, e->contentsize, e->contentp.p);
+#define fungen_hashtable__fill_buff_part_nf \
+  CALL(b, write, sizeof(e->keysize), &(e->keysize)); \
+  CALL(b, write, e->keysize, e->keyp.p); \
+  CALL(b, write, this->_htp->fixed_size_len, e->contentp.p);
+#define fungen_hashtable__fill_buff_part_nn \
+  CALL(b, write, sizeof(e->keysize), &(e->keysize)); \
+  CALL(b, write, e->keysize, e->keyp.p); \
+  CALL(b, write, sizeof(e->contentsize), &(e->contentsize)); \
+  CALL(b, write, e->contentsize, e->contentp.p);
+#define fungen_hashtable__fill_buff_part_kf \
+  CALL(b, write, this->_htp->key_size, e->keyp.p);
+#define fungen_hashtable__fill_buff_part_kn \
+  CALL(b, write, sizeof(uint32_t), &(e->keysize)); \
+  CALL(b, write, e->keysize, e->keyp.p);
+#define fungen_hashtable__fill_buff(PF) \
+int _hashtable__fill_buff_ ## PF \
+( void * _this, buffer * b, void * entry ) \
+{ \
+  /* Allocate memory for keypkt and set it */ \
+  hashentry_ ## PF ## _t * e = \
+    (hashentry_ ## PF ## _t *)entry; \
+  \
+  fungen_hashtable__fill_buff_part_ ## PF \
+  return 0; \
+}
+
+fungen_hashtable__fill_buff(ff)
+fungen_hashtable__fill_buff(fn)
+fungen_hashtable__fill_buff(nn)
+fungen_hashtable__fill_buff(nf)
+fungen_hashtable__fill_buff(kf)
+fungen_hashtable__fill_buff(kn)
+
+#undef fungen_hashtable__fill_buff_part_ff
+#undef fungen_hashtable__fill_buff_part_fn
+#undef fungen_hashtable__fill_buff_part_nn
+#undef fungen_hashtable__fill_buff_part_nf
+#undef fungen_hashtable__fill_buff_part_kf
+#undef fungen_hashtable__fill_buff_part_kn
+#undef fungen_hashtable__fill_buff
+/* */
+
+/* Create and fill data buffer with full dictionary 
+ *  when has_full_hash_array is True */
+buffer * _hashtable__fill_full_ha(void * _this)
+{
+  /* Create new buffer object */
+  buffer * b = new(buffer, NULL);
+  
+  /* write _num_of_entries */
+  CALL(b, write, sizeof(this->_num_of_entries), 
+       &(this->_num_of_entries));
+  
+  /* Explore hash_array entries */
+  for (uint32_t imod = 0; 
+       imod < this->_htp->hash_modulus; 
+       imod++)
+  {
+    fprintf(stderr, "filling modulus %d\n", imod);
+    
+    hashentry_nn_t * ne = 
+      (hashentry_nn_t *)(pha(this->_ht, imod)->first_entry);
+    
+    if (pha(this->_ht, imod)->num_of_entries)
+    {
+      /* Since list is non empty, write modulus and num_of_entries */
+      CALL(b, write, sizeof(imod), &imod);
+      CALL(b, write, sizeof(pha(this->_ht, imod)->num_of_entries), 
+           &(pha(this->_ht, imod)->num_of_entries));
+    }
+      
+    while(ne)
+    {
+      CALL(this, _fill_buff, b, ne);
+      ne = ne->next_entry;
+    }
+    
+  }
+  
+  return b;
+}
+/* */
+
 /* Write data */
-int _hashtable_write_hashtable(hashtable * this, char * file_name)
+int clsm(write_hashtable, char * file_name)
 {
   printf("Writing data to %s\n", file_name);
   int fd;
   
-  fd = open(file_name, O_CREAT|O_WRONLY, S_IRUSR|S_IWUSR);
+  fd = open(file_name, O_CREAT|O_WRONLY|O_TRUNC, S_IRUSR|S_IWUSR);
   
   printf("Writing magick...\n");
   write(fd, FILE_MAGICK, sizeof(FILE_MAGICK)-1);
@@ -789,6 +1030,23 @@ int _hashtable_write_hashtable(hashtable * this, char * file_name)
       
     }
     
+    else if (p->sectype == HT_SECTION_DATA)
+    {
+      printf("Data section.\n");
+      printf("Writing data section header...\n");
+      write(fd, &(p->sectype), sizeof(p->sectype));
+      
+      printf("Writing data...\n");
+      buffer * b = CALL(this, _fill);
+      
+      uint64_t data_seclen = (uint64_t)(CALL(b, get_mapsz));
+      fprintf(stderr, "map_size = %d\n", data_seclen);
+      write(fd, &data_seclen, sizeof(data_seclen));
+      write(fd, CALL(b, get_map), CALL(b, get_mapsz));
+      
+      CALL(b, destroy);
+    }
+    
     else
       printf("Section type unknown!\n");
   }
@@ -797,40 +1055,40 @@ int _hashtable_write_hashtable(hashtable * this, char * file_name)
 }
 /* */
 
-/* Create new hashtable object */
-int _hashtable_init(void * t, void * init_par)
+/* Initialize data section */
+int clsm(_initialize_data_sec)
 {
-  hashtable * this = (hashtable *)t;
-  
-  this->_load_data_from_file = _hashtable__load_data_from_file;
-  this->_load_props_section = _hashtable__load_props_section;
-  this->_load_meta_section = _hashtable__load_meta_section;
-  this->fill_sample_data = _hashtable_fill_sample_data;
-  this->print_sample_data = _hashtable_print_sample_data;
-  this->_append_section = _hashtable__append_section;
-  this->write_hashtable = _hashtable_write_hashtable;
-  this->_write_data_meta = _hashtable__write_data_meta;
-
-  if (init_par)
+  uint8_t ne_case = 0;
+  ne_case = (this->_htp->has_only_key) &
+            ((this->_htp->has_fixed_key_size << 1) & 0x02) &
+            ((this->_htp->has_fixed_size << 2) & 0x04);
+  switch(ne_case)
   {
-    if (((struct hashtable_init_params *)init_par)->file_name)
-      CALL(this, _load_data_from_file, 
-           ((struct hashtable_init_params *)init_par)->file_name);
+    case 0: 
+      this->_newentry  = _hashtable__newentry_nn;
+      this->_fill_buff = _hashtable__fill_buff_nn;
+      break;
+    case 1: 
+      this->_newentry  = _hashtable__newentry_kn;
+      this->_fill_buff = _hashtable__fill_buff_kn;
+      break;
+    case 2: 
+      this->_newentry  = _hashtable__newentry_fn;
+      this->_fill_buff = _hashtable__fill_buff_fn;
+      break;
+    case 3: 
+      this->_newentry  = _hashtable__newentry_kf;
+      this->_fill_buff = _hashtable__fill_buff_kf;
+      break;
+    case 4: 
+      this->_newentry  = _hashtable__newentry_nf;
+      this->_fill_buff = _hashtable__fill_buff_nf;
+      break;
+    case 6: 
+      this->_newentry  = _hashtable__newentry_ff;
+      this->_fill_buff = _hashtable__fill_buff_ff;
+      break;
   }
-  else
-    CALL(this, fill_sample_data);
-  
-  //if (init_par)
-  //  this->_htp = (ht_props_t *)init_par;
-  //else
-  //  CALL(this, fill_sample_data);
-    
-  if (this->_htp->has_fixed_key_size)
-    this->_newentry = (this->_htp->has_fixed_size) ? 
-      _hashtable__newentry_ff : _hashtable__newentry_fn;
-  else
-    this->_newentry = (this->_htp->has_fixed_size) ? 
-      _hashtable__newentry_nf : _hashtable__newentry_nn;
   
   /* Allocate and set hashtable */
   if (memcmp(this->_htp->hash_algo, "mod", 4) == 0)
@@ -852,6 +1110,7 @@ int _hashtable_init(void * t, void * init_par)
         _hashtable__lookup_into_class_array_n;
       this->push = _hashtable_push_into_array;
       
+      this->_fill = _hashtable__fill_full_ha;
     }
     
     else
@@ -867,62 +1126,46 @@ int _hashtable_init(void * t, void * init_par)
   
   return 0;
 }
-/* hashtable object methods ends. */
-/**********************************/
+/* */
 
-
-int main(void)
+/* Initialize new hashtable object */
+int clsm(init, void * init_par)
 {
-  /*
-  buffer * b = new(buffer, NULL);
+  clsmlnk(_initialize_data_sec);
+  clsmlnk(_load_data_from_file);
+  clsmlnk(_load_props_section);
+  clsmlnk(_load_meta_section);
+  clsmlnk(_load_data_section);
+  clsmlnk(_add_meta_field);
+  clsmlnk(_append_section);
+  clsmlnk(_write_data_meta);
+  clsmlnk(fill_sample_data);
+  clsmlnk(print_sample_data);
+  clsmlnk(write_hashtable);
+  clsmlnk(lookup);
   
-  CALL(b, write, strlf("ciao belli"), "ciao belli");
-  CALL(b, write, strlf("ancora 1"), "ancora 1");
-  
-  fprintf(stderr, "b->msize=%d, b->used = %d\n", b->msize, b->used);
-  
-  for (int i=0; i<b->used; i++)
-    fprintf(stderr, "%c - %d\n", *(b->addr + i), *(b->addr + i) );
-  
-  CALL(b, destroy);
-  */
-  
-  //struct hashtable_init_params ip = {"nuova.baf", NULL};
-  
-  hashtable * t = new(hashtable, NULL);
-  
-  CALL(t, print_sample_data);
-  //CALL(t, write_hashtable, "nuova.baf");
-  
-  /*
-  CALL(t, push, 4, P_unspec, "ELAV", 6, P_unspec, "VALUE");
-  CALL(t, push, 4, P_unspec, "ALAV", 6, P_unspec, "VALUE");
-  CALL(t, push, 4, P_unspec, "EPEP", 6, P_unspec, "VALUE");
-  
-  for (int imod = 0; 
-       imod < t->_htp->hash_modulus; 
-       imod++)
+  struct hashtable_init_params * ip = 
+    (struct hashtable_init_params *)init_par;
+
+  if (ip)
   {
-    fprintf(stderr, "modulus=%d\n", imod);
-    
-    hashentry_nn_t * ne = 
-      (hashentry_nn_t *)(pha(t->_ht, imod)->first_entry);
-    while(ne)
-    {
-      fprintf(stderr, "   keysize=%d\n"
-                      "    key=%s\n"
-                      "    datasize=%d\n"
-                      "    data=%s\n",
-              ne->keysize,
-              ne->keyp.p,
-              ne->contentsize,
-              ne->contentp.p
-             );
-      ne = ne->next_entry;
-    }
-    
+    if (ip->file_name)
+      CALL(this, _load_data_from_file, ip->file_name);
   }
-  */
+  else
+  {
+    CALL(this, fill_sample_data);
+    
+    CALL(this, _initialize_data_sec);
+    
+    sdata_t * data_section = hcalloc(1, sizeof(data_t));
+    CALL(this, _append_section, HT_SECTION_DATA, data_section);
+  }
   
   return 0;
 }
+
+#endif
+#undef _CLASS_NAME
+/* hashtable object methods ends. */
+/**********************************/

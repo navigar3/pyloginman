@@ -5,18 +5,8 @@
 
 #include <stdint.h>
 
-#define strlf(arg) 1+strlen(arg)
-
-void * hmalloc(size_t s);
-void * hcalloc(size_t n, size_t s);
-
 
 typedef enum {False, True} bool;
-
-typedef char * string_t;
-
-#define HT_VERSION 0x00000001
-#define FILE_MAGICK "htd"
 
 /* Keep track of dynamically allocated memory where needed.     */
 /*  This allow to track pointer that need to be manually freed. */
@@ -27,32 +17,43 @@ typedef struct
   void * p;
 } ptr_t;
 
+typedef uint16_t keysize_t;
+/* */
+
+#ifdef _HASHTABLE_H_PRIVATE
+
+#define strlf(arg) 1+strlen(arg)
+
+typedef char * string_t;
+
+#define HT_VERSION 0x00000001
+#define FILE_MAGICK "htd"
+
+void * hmalloc(size_t s);
+void * hcalloc(size_t n, size_t s);
+
 /* Store in memory data before write it to file. 
  *  Keep track of allocation size and extend if needed */
 typedef struct 
 {
   int (*init)(void *, void *);
-} genobj;
-
-typedef struct buffer_o
-{
-  int (*init)(void *, void *);
   
-  char * addr;
-  size_t msize;
-  size_t used;
-  size_t newwinsz;
-  
-  int (*write)(struct buffer_o *, size_t, char *);
-  int (*destroy)(struct buffer_o *);
+  int (*write)(void *, size_t, void *);
+  size_t (*get_mapsz)(void *);
+  char * (*get_map)(void *);
+  int (*destroy)(void *);
   
   /* Private */
   
-  int (*_realloc)(struct buffer_o *, size_t);
+  char * _addr;
+  size_t _msize;
+  size_t _used;
+  size_t _newwinsz;
+  
+  int (*_realloc)(void *, size_t);
 } buffer;
 
-#define new(class, ...) newobj(_ ## class ## _init, sizeof(class), ##__VA_ARGS__)
-#define CALL(obj, met, ...) obj->met(obj, ##__VA_ARGS__)
+newclass_h(buffer)
 /* */
 
 /* Top level file sections descriptor. */
@@ -173,12 +174,14 @@ typedef struct
 
 #if HT_VERSION==0x00000001
 #define DF_HT_PROPS \
+  ((uint32_t,  ver_major))\
+  ((uint32_t,  ver_minor))\
   ((string_t,  hash_algo))\
   ((string_t,  hash_dl_helper))\
   ((void,      * (*hash_fun_init)(void * start)))\
   ((void,      * (*hash_function)(void * data)))\
   ((uint32_t,  hash_modulus))\
-  ((bool,      has_key))\
+  ((bool,      has_only_key))\
   ((bool,      has_fixed_key_size))\
   ((uint32_t,  key_size))\
   ((bool,      has_full_hash_array))\
@@ -199,7 +202,7 @@ typedef struct ht_props_s
  *  define metadata informations for the file. 
  *  These informations are not used by the program itself but 
  *  are related to stored data. */
-#define  HT_SECTION_META  0x00000002
+#define  HT_SECTION_META  HT_SECTION_PROPS+1
 
 struct smeta_field
 {
@@ -221,40 +224,26 @@ typedef struct
   
   struct smeta_block * list;
 } smeta_t;
-
-/* Add metadata field in metadata section */
-int add_meta_field(
-  smeta_t * sm,
-  uint16_t name_len,
-  uint16_t value_len,
-  char * name,
-  char * value
-);
-
-/* Save metadata section into file. */
-int write_data_meta(int fd, smeta_t * metadata);
-
-/* Load metadata section from file. */
-int load_meta_section(char * secaddr, uint64_t seclen);
-
 /* Metadata defs ends. */
 
-
 /* Hash table object */
-#define structgen_hashentry_part_ff
+#define structgen_hashentry_part_ff \
+  ptr_t contentp; 
 #define structgen_hashentry_part_fn \
-  uint32_t contentsize;
+  uint32_t contentsize; ptr_t contentp;
 #define structgen_hashentry_part_nf \
-  uint32_t keysize;
+  keysize_t keysize; ptr_t contentp;
 #define structgen_hashentry_part_nn \
-  uint32_t keysize; uint32_t contentsize;
+  keysize_t keysize; uint32_t contentsize; ptr_t contentp;
+#define structgen_hashentry_part_kf
+#define structgen_hashentry_part_kn \
+  keysize_t keysize;
 #define structgen_hashentry(PF) \
 typedef struct hashentry_ ## PF ## _s \
 { \
   struct hashentry_ ## PF ## _s * next_entry; \
   \
   ptr_t keyp; \
-  ptr_t contentp; \
   \
   structgen_hashentry_part_ ## PF \
 } hashentry_ ## PF ## _t;
@@ -263,26 +252,30 @@ structgen_hashentry(ff)
 structgen_hashentry(fn)
 structgen_hashentry(nn)
 structgen_hashentry(nf)
+structgen_hashentry(kf)
+structgen_hashentry(kn)
 
 #undef structgen_hashentry_part_ff
 #undef structgen_hashentry_part_fn
 #undef structgen_hashentry_part_nn
 #undef structgen_hashentry_part_nf
+#undef structgen_hashentry_part_kf
+#undef structgen_hashentry_part_kn
 #undef structgen_hashentry
 
-typedef hashentry_ff_t hashentry_t;
+typedef hashentry_kf_t hashentry_t;
 
 typedef struct hasharray_s
 {
-  uint64_t num_of_entries;
+  uint16_t num_of_entries;
   
-  void * first_entry; /* Can be hashentry_[nf][nf]_t */
+  void * first_entry; /* Can be hashentry_[knf][nf]_t */
 } hasharray_t;
 
 typedef struct hashlist_s
 {
   char * hashkey;
-  uint64_t num_of_entries;
+  uint32_t num_of_entries;
   void * first_entry;
   
   struct hashlist_s * next;
@@ -293,43 +286,64 @@ typedef struct hashlist_s
 
 #define pha(p, n) ((hasharray_t *)(p + n*sizeof(hasharray_t))) 
 
+
+#define  HT_SECTION_DATA  HT_SECTION_META+1
+
+typedef struct
+{
+  uint64_t seclen;
+  
+  char * raw_data_map;
+} sdata_t;
+
+#endif
+
 struct lookup_res
 {
   void * key;
   void * content;
   
-  uint32_t keysize;
+  keysize_t keysize;
   uint32_t contentsize;
 };
 
+
 struct hashtable_init_params
 {
-  char * file_name;
-  ht_props_t * htp;
+  char *    file_name;  /* Load from file name */
+  
+  char *    hash_algo;
+  char *    hash_dl_helper;
+  uint32_t  hash_modulus;
+  bool      has_key;
+  bool      has_fixed_key_size;
+  uint32_t  key_size;
+  bool      has_fixed_size;
+  uint32_t  fixed_size_len;
 };
 
-typedef struct hashtable_o
+typedef struct 
 {
   int (*init)(void *, void *);
   
-  uint32_t (*compute_hash)(struct hashtable_o *, 
+  uint32_t (*compute_hash)(void *, 
                            uint32_t keysize, char * key);
-  int (*push)(struct hashtable_o *, 
-              uint32_t keysize, 
+  int (*push)(void *, 
+              keysize_t keysize, 
               pointer_type kt, char * key, 
               uint32_t datasize,
               pointer_type dt,
-              void * data);
-  int * (*lookup)(struct hashtable_o *, char * key, 
+              void * data, void * precomp_hash);
+  int (*lookup)(void *, keysize_t ks, char * key, 
                   void * resptr, struct lookup_res *);
-  int (*write_hashtable)(struct hashtable_o *, char * file_name);
-  int (*destroy)(struct hashtable_o *);
+  int (*write_hashtable)(void *, char * file_name);
+  int (*destroy)(void *);
   
   //Debug
-  int (*fill_sample_data)(struct hashtable_o *);
-  int (*print_sample_data)(struct hashtable_o *);
+  int (*fill_sample_data)(void *);
+  int (*print_sample_data)(void *);
   
-  
+  #ifdef _HASHTABLE_H_PRIVATE
   /* Private part begin */
   
   data_t _gdata;
@@ -341,27 +355,40 @@ typedef struct hashtable_o
   void * _ht; /* * _ht may be hasharray_t pointer to pointer or
                  hashlist_t pointer */
   
-  int (*_append_section)(struct hashtable_o *, 
+  int (*_initialize_data_sec)(void *);
+  int (*_add_meta_field)(void *,
+                         smeta_t * sm,
+                         uint16_t name_len, uint16_t value_len,
+                         char * name, char * value);
+  int (*_append_section)(void *, 
                          uint32_t stype, void * s);
-  int (*_load_data_from_file)(struct hashtable_o *, char *file_name);
-  int (*_load_meta_section)(struct hashtable_o *, 
-                            char * secaddr, uint64_t seclen);
-  int (*_load_props_section)(struct hashtable_o *, 
-                             char * secaddr, uint64_t seclen);
-  int (*_write_data_meta)(struct hashtable_o *, 
-                          int fd, smeta_t * metadata);
-  
-  void * (*_newentry)(struct hashtable_o *,
-                      uint32_t keysize,
+  void * (*_newentry)(void *,
+                      keysize_t keysize,
                       pointer_type kt, char * key,
                       uint32_t datasize, 
                       pointer_type dt, void * data);
-  int (*_lookup_into_class)(struct hashtable_o *, 
+  int (*_lookup_into_class)(void *, 
                             void * modclass,
-                            uint32_t keysize, char * key,
+                            keysize_t keysize, char * key,
                             void * resptr, struct lookup_res * ls);
+  int (*_load_data_from_file)(void *, char *file_name);
+  int (*_load_meta_section)(void *, 
+                            char * secaddr, uint64_t seclen);
+  int (*_load_props_section)(void *, 
+                             char * secaddr, uint64_t seclen);
+  int (*_load_data_section)(void *, 
+                            char * secaddr, uint64_t seclen);
+  int (*_load_entry)(void *, char * map);
+  int (*_write_data_meta)(void *, 
+                          int fd, smeta_t * metadata);
+  buffer * (*_fill)(void *);
+  int (*_fill_buff)( void *, buffer * b, void * entry);
+  
+  #endif
   
 } hashtable;
+
+newclass_h(hashtable)
 /* Hash table object ends */
 
 #endif

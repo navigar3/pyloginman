@@ -1,0 +1,73 @@
+from fontTools.ttLib import TTFont
+from fontTools.unicode import Unicode
+
+
+from PIL import ImageFont, ImageDraw, Image
+
+fname = 'font.ttf'
+fsize = 64
+
+# Get Best Character map dictionary
+font = TTFont(fname)
+cmap = font.getBestCmap()
+font.close()
+
+# Re-open font via PIL
+font = ImageFont.truetype(fname, fsize)
+
+(ascent, descent) = font.getmetrics()
+
+cmapval = {}
+
+maxwidth = 0
+maxheight = 0
+kmaxw = 0
+kmaxh = 0
+
+for k in cmap:
+  c = chr(k)
+  
+  print('Rendering [' + str(k) + '] ' + c + ' ...')
+
+  (offx, offy, w, h) = font.getbbox(c)
+  
+  if type(font.getmask(c).getbbox()) is type(None):
+    (toffx, toffy, tw, th) = (0, 0, 0, 0)
+  else:
+    (toffx, toffy, tw, th) = font.getmask(c).getbbox()
+  
+  cmapval[k] = {'gname': cmap[k], 
+                'offx': offx, 'offy': offy, 'w': w, 'h': h,
+                'toffx': toffx, 'toffy': toffy, 'tw': tw, 'th': th}
+  
+  if offx+toffx+tw > maxwidth:
+    maxwidth = offx+toffx+tw
+    kmaxw = k
+  
+  if offy+toffy+th > maxheight:
+    maxheight = offy+toffy+th
+    kmaxh = k
+
+print ('Number of glyphs: %d' % len(cmapval))
+
+print ('Char with max width is [%d] %c\n width=%d' % (kmaxw, chr(kmaxw), maxwidth))
+print ('Char with max height is [%d] %c\n width=%d' % (kmaxh, chr(kmaxh), maxheight))
+
+#print(cmapval)
+
+#c = chr(9835)
+c = '('
+
+(offx, offy, w, h) = font.getbbox(c)
+(toffx, toffy, tw, th) = font.getmask(c).getbbox()
+
+im = Image.new("RGB", (tw, th), (255, 255, 255))
+draw = ImageDraw.Draw(im)
+
+draw.text((-offx-toffx, -offy-toffy), c, (0, 0, 0), font=font)
+
+print ("acent=%d\ndescent=%d\noffset x=%d\noffset y=%d\nw=%d\nh=%d\n"
+       "tw=%d\nth=%d\ntoffx=%d\ntoffy=%d" % 
+  (ascent, descent, offx, offy, w, h, tw, th, toffx, toffy))
+
+im.show()
