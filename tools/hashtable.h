@@ -8,6 +8,12 @@
 
 typedef enum {False, True} bool;
 
+typedef uint16_t keysize_t;
+
+#ifdef _HASHTABLE_H_PRIVATE
+
+#define FULL_HASH_MAX_SZ 2^16
+
 /* Keep track of dynamically allocated memory where needed.     */
 /*  This allow to track pointer that need to be manually freed. */
 typedef enum {P_dyn, P_stat, P_unspec} pointer_type;
@@ -16,11 +22,7 @@ typedef struct
   pointer_type pt;
   void * p;
 } ptr_t;
-
-typedef uint16_t keysize_t;
 /* */
-
-#ifdef _HASHTABLE_H_PRIVATE
 
 #define strlf(arg) 1+strlen(arg)
 
@@ -315,7 +317,7 @@ struct hashtable_init_params
   char *    hash_algo;
   char *    hash_dl_helper;
   uint32_t  hash_modulus;
-  bool      has_key;
+  bool      has_only_key;
   bool      has_fixed_key_size;
   uint32_t  key_size;
   bool      has_fixed_size;
@@ -328,12 +330,12 @@ typedef struct
   
   uint32_t (*compute_hash)(void *, 
                            uint32_t keysize, char * key);
+  int (*add_meta_field)(void *,
+                        uint16_t name_len, uint16_t value_len,
+                        char * name, char * value);
   int (*push)(void *, 
-              keysize_t keysize, 
-              pointer_type kt, char * key, 
-              uint32_t datasize,
-              pointer_type dt,
-              void * data, void * precomp_hash);
+              keysize_t keysize, char * key, 
+              uint32_t datasize, void * data);
   int (*lookup)(void *, keysize_t ks, char * key, 
                   void * resptr, struct lookup_res *);
   int (*write_hashtable)(void *, char * file_name);
@@ -347,6 +349,7 @@ typedef struct
   /* Private part begin */
   
   data_t _gdata;
+  smeta_t * _metadata;
   ht_props_t * _htp;
   
   uint64_t _num_of_classes;
@@ -356,12 +359,14 @@ typedef struct
                  hashlist_t pointer */
   
   int (*_initialize_data_sec)(void *);
-  int (*_add_meta_field)(void *,
-                         smeta_t * sm,
-                         uint16_t name_len, uint16_t value_len,
-                         char * name, char * value);
   int (*_append_section)(void *, 
                          uint32_t stype, void * s);
+  int (*_push)(void *, 
+              keysize_t keysize, 
+              pointer_type kt, char * key, 
+              uint32_t datasize,
+              pointer_type dt,
+              void * data, void * precomp_hash);
   void * (*_newentry)(void *,
                       keysize_t keysize,
                       pointer_type kt, char * key,

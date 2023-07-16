@@ -382,7 +382,7 @@ int clsm(lookup, keysize_t keysize, char * key,
 }
 /* */
 
-/* Push element into hashtable */
+/* Push element into hashtable having full hash array */
 int clsm(push_into_array, 
   keysize_t keysize, pointer_type kt, char * key, 
   uint32_t datasize, pointer_type dt, void * data, void * precomp_hash)
@@ -418,6 +418,25 @@ int clsm(push_into_array,
   /* Increment num_of_entries */
   this->_num_of_entries += 1;
   pha(this->_ht, keyhash)->num_of_entries += 1;
+  return 0;
+}
+/* */
+
+/* Push element into hashtable */
+int clsm(push, 
+     keysize_t keysize, char * key, uint32_t datasize, void * data)
+{
+  /* Allocate memory for key and data and copy them */
+  char * keycopy = hmalloc(sizeof(char)*keysize);
+  char * datacopy = hmalloc(sizeof(char)*datasize);
+  
+  memcpy(keycopy, key, keysize);
+  memcpy(datacopy, data, datasize);
+  
+  /* push element in dictionary */
+  CALL(this, _push, 
+       keysize, P_dyn, keycopy, datasize, P_dyn, datacopy, NULL);
+  
   return 0;
 }
 /* */
@@ -477,6 +496,8 @@ int clsm(fill_sample_data)
   
   smeta_t * sm = hcalloc(1, sizeof(smeta_t));
   
+  this->_metadata = sm;
+  
   const char * meta_fields_test[][2] = {
       {"nome1", "valore1"}, 
       {"pappa", "ciccia"},
@@ -488,7 +509,7 @@ int clsm(fill_sample_data)
     };
   
   for (int i=0; *meta_fields_test[i]; i++)
-    CALL(this, _add_meta_field, sm,
+    CALL(this, add_meta_field,
          strlen(meta_fields_test[i][0])+1,
          strlen(meta_fields_test[i][1])+1,
          (char *)meta_fields_test[i][0],
@@ -586,14 +607,22 @@ int clsm(print_sample_data)
 }
 
 /* Add meta field in metadata section */
-int clsm(_add_meta_field,
-  smeta_t * sm,
+int clsm(add_meta_field,
   uint16_t name_len, uint16_t value_len,
   char * name, char * value
 )
 {
+  smeta_t * sm = this->_metadata;
+  
   struct smeta_block * block;
   struct smeta_block ** last_block;
+  
+  if (!sm)
+  {
+    sm = hcalloc(1, sizeof(smeta_t));
+    this->_metadata = sm;
+    CALL(this, _append_section, HT_SECTION_META, sm);
+  }
   
   /* Allocate and set to zero memory for the new item pointers. */
   block = hcalloc(1, sizeof(struct smeta_block));
@@ -675,6 +704,8 @@ int clsm(_load_meta_section, char * secaddr, uint64_t seclen)
   
   new_meta->seclen = seclen;
   
+  this->_metadata = new_meta;
+  
   struct smeta_block ** block = &(new_meta->list);
   while (seccur < seclen)
   {
@@ -745,13 +776,14 @@ int _hashtable__load_entry_nn(void * _this, char * mp,
 int _hashtable__load_full_ha(void * _this, char * mp)
 {
   uint64_t mp_offs = 0;
-  typeof(this->_num_of_entries) nl = 0;
+  typeof(this->_num_of_entries) nl;
+  typeof(this->_num_of_entries) tot_ne;
   
   /* First load _num_of_entries */
-  _CAST_LOAD(mp, this->_num_of_entries, mp_offs)
+  _CAST_LOAD(mp, tot_ne, mp_offs)
   
   /* Now load entries */
-  for ( ; nl<this->_num_of_entries; nl++)
+  for (nl=0; nl<tot_ne; nl++)
   {
     keysize_t ks;
     uint32_t ds;
@@ -766,13 +798,11 @@ int _hashtable__load_full_ha(void * _this, char * mp)
     
     for (unsigned int j = 0; j < ne; j++)
     {
-      fprintf(stderr, "--->hme=%d, ne=%d\n", hme, ne);
-    
       mp_offs += 
         _hashtable__load_entry_nn(_this, mp+mp_offs, 
                                   &ks, &pkey, &ds, &pdata);
-    
-      CALL(this, push, ks, P_unspec, pkey, ds, P_unspec, pdata, &hme);
+                                  
+      CALL(this, _push, ks, P_unspec, pkey, ds, P_unspec, pdata, &hme);
     }
   }
   
@@ -1011,7 +1041,11 @@ int clsm(write_hashtable, char * file_name)
       printf("metadata section.\n");
       printf("Writing metadata section header...\n");
       write(fd, &(p->sectype), sizeof(p->sectype));
-      write(fd, &(p->seclen), sizeof(p->seclen));
+      
+      typeof(((smeta_t *)p->sec_content)->seclen) _seclen = 
+        ((smeta_t *)p->sec_content)->seclen;
+      
+      write(fd, &_seclen, sizeof(_seclen));
       
       CALL(this, _write_data_meta, fd, (smeta_t *)p->sec_content);
     }
@@ -1096,6 +1130,9 @@ int clsm(_initialize_data_sec)
     /* Use module to compute hash */
     this->compute_hash = _hashtable_compute_hash;
     
+    this->_htp->has_full_hash_array = 
+      (this->_htp->hash_modulus < FULL_HASH_MAX_SZ) ? True : False;
+    
     if (this->_htp->has_full_hash_array)
     {
       /* Use full hash array */
@@ -1108,7 +1145,7 @@ int clsm(_initialize_data_sec)
       this->_lookup_into_class = (this->_htp->has_fixed_key_size) ? 
         _hashtable__lookup_into_class_array_f : 
         _hashtable__lookup_into_class_array_n;
-      this->push = _hashtable_push_into_array;
+      this->_push = _hashtable_push_into_array;
       
       this->_fill = _hashtable__fill_full_ha;
     }
@@ -1136,9 +1173,10 @@ int clsm(init, void * init_par)
   clsmlnk(_load_props_section);
   clsmlnk(_load_meta_section);
   clsmlnk(_load_data_section);
-  clsmlnk(_add_meta_field);
   clsmlnk(_append_section);
   clsmlnk(_write_data_meta);
+  clsmlnk(add_meta_field);
+  clsmlnk(push);
   clsmlnk(fill_sample_data);
   clsmlnk(print_sample_data);
   clsmlnk(write_hashtable);
@@ -1151,15 +1189,69 @@ int clsm(init, void * init_par)
   {
     if (ip->file_name)
       CALL(this, _load_data_from_file, ip->file_name);
-  }
-  else
-  {
-    CALL(this, fill_sample_data);
+    else
+    {
+      this->_htp = hcalloc(1, sizeof(ht_props_t));
+      
+      this->_htp->seclen = 0;
+      
+      this->_htp->ver_major = 0;
+      this->_htp->seclen += sizeof(this->_htp->ver_major);
+      
+      this->_htp->ver_minor = 1;
+      this->_htp->seclen += sizeof(this->_htp->ver_minor);
+      
+      if (ip->hash_algo)
+      {
+        this->_htp->hash_algo = hmalloc(strlf(ip->hash_algo));
+        memcpy(this->_htp->hash_algo, ip->hash_algo, 
+          strlf(ip->hash_algo));
+        this->_htp->seclen += strlf(ip->hash_algo);
+      }
+      else
+      {
+        this->_htp->hash_algo = hmalloc(sizeof(char));
+        *(this->_htp->hash_algo) = '\0';
+        this->_htp->seclen += 1;
+      }
+        
+      if (ip->hash_dl_helper)
+      {
+        this->_htp->hash_dl_helper = hmalloc(strlf(ip->hash_dl_helper));
+        memcpy(this->_htp->hash_dl_helper, ip->hash_dl_helper, 
+          strlf(ip->hash_dl_helper));
+        this->_htp->seclen += strlf(ip->hash_dl_helper);
+      }
+      else
+      {
+        this->_htp->hash_dl_helper = hmalloc(sizeof(char));
+        *(this->_htp->hash_dl_helper) = '\0';
+        this->_htp->seclen += 1;
+      }
+      
+      this->_htp->hash_modulus = ip->hash_modulus;
+      this->_htp->seclen += sizeof(this->_htp->hash_modulus);
+      this->_htp->has_only_key = ip->has_only_key;
+      this->_htp->seclen += 1;
+      this->_htp->has_fixed_key_size = ip->has_fixed_key_size;
+      this->_htp->seclen += 1;
+      this->_htp->key_size = ip->key_size;
+      this->_htp->seclen += sizeof(this->_htp->key_size);
+      this->_htp->has_fixed_size = ip->has_fixed_size;
+      this->_htp->seclen += 1;
+      this->_htp->fixed_size_len = ip->fixed_size_len;
+      this->_htp->seclen += sizeof(this->_htp->fixed_size_len);
+      
+      /* has_full_hash_array space */
+      this->_htp->seclen += 1;
     
-    CALL(this, _initialize_data_sec);
-    
-    sdata_t * data_section = hcalloc(1, sizeof(data_t));
-    CALL(this, _append_section, HT_SECTION_DATA, data_section);
+      CALL(this, _append_section, HT_SECTION_PROPS, this->_htp);
+      
+      CALL(this, _initialize_data_sec);
+      
+      sdata_t * data_section = hcalloc(1, sizeof(data_t));
+      CALL(this, _append_section, HT_SECTION_DATA, data_section);
+    }
   }
   
   return 0;

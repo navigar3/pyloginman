@@ -4,6 +4,8 @@ from fontTools.unicode import Unicode
 
 from PIL import ImageFont, ImageDraw, Image
 
+import numpy as np
+
 fname = 'font.ttf'
 fsize = 64
 
@@ -70,4 +72,37 @@ print ("acent=%d\ndescent=%d\noffset x=%d\noffset y=%d\nw=%d\nh=%d\n"
        "tw=%d\nth=%d\ntoffx=%d\ntoffy=%d" % 
   (ascent, descent, offx, offy, w, h, tw, th, toffx, toffy))
 
-im.show()
+
+#im.show()
+aim = np.array(im)
+fim = ''
+fim += 'P2\n%d %d\n15\n' % (aim[:,:,0].shape[1], aim[:,:,0].shape[0])
+for row in aim[:,:,0]:
+  for j in row:
+    fim += '%d ' % int(j / 16)
+  fim += '\n'
+
+with open('img.pgm', 'w') as f:
+  f.write(fim)
+
+# Pack image with 4 bits depht
+import struct
+
+fbm = struct.pack('<I', offx+toffx) + \
+  struct.pack('<I', offy+toffy) + \
+  struct.pack('<I', aim[:,:,0].shape[1]) + \
+  struct.pack('<I', aim[:,:,0].shape[0])
+ms = True
+doublepxsval = 0
+for row in aim[:,:,0]:
+  for j in row:
+    if ms is True:
+      doublepxsval = j & 0xf0
+      ms = False
+    else:
+      doublepxsval |= ((j & 0xf0) >> 4)
+      ms = True
+      fbm += struct.pack('B', doublepxsval)
+
+with open('img.raw', 'wb') as f:
+  f.write(fbm)
