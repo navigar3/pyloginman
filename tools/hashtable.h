@@ -312,7 +312,7 @@ struct lookup_res
 
 struct hashtable_init_params
 {
-  char *    file_name;  /* Load from file name */
+  char *    map;  /* Load from memory mapped @map */
   
   char *    hash_algo;
   char *    hash_dl_helper;
@@ -338,7 +338,7 @@ typedef struct
               uint32_t datasize, void * data);
   int (*lookup)(void *, keysize_t ks, char * key, 
                   void * resptr, struct lookup_res *);
-  int (*write_hashtable)(void *, char * file_name);
+  int (*write_hashtable)(void *, int fd);
   int (*destroy)(void *);
   
   //Debug
@@ -347,6 +347,9 @@ typedef struct
   
   #ifdef _HASHTABLE_H_PRIVATE
   /* Private part begin */
+  
+  char * _fmap_table_entry;
+  size_t _fmap_table_offs;
   
   data_t _gdata;
   smeta_t * _metadata;
@@ -376,7 +379,7 @@ typedef struct
                             void * modclass,
                             keysize_t keysize, char * key,
                             void * resptr, struct lookup_res * ls);
-  int (*_load_data_from_file)(void *, char *file_name);
+  size_t (*_load_data_from_map)(void *, char * map);
   int (*_load_meta_section)(void *, 
                             char * secaddr, uint64_t seclen);
   int (*_load_props_section)(void *, 
@@ -395,5 +398,40 @@ typedef struct
 
 newclass_h(hashtable)
 /* Hash table object ends */
+
+/* Multitables dictionaries */
+#ifdef _HASHTABLE_H_PRIVATE
+struct htableslist
+{
+  ptr_t table_name;
+  hashtable * table;
+  
+  struct htableslist * next;
+};
+#endif
+
+typedef struct 
+{
+  int (*init)(void *, void *);
+  
+  hashtable * (*newtable)(void *, char * tablename, 
+                  struct hashtable_init_params *);
+  hashtable * (*lookup)(void *, char * tablename);
+  int (*loadtables)(void *, char * file_name);
+  int (*savetables)(void *, char * file_name);
+  int (*destroy)(void *);
+  
+  #ifdef _HASHTABLE_H_PRIVATE
+  uint16_t _num_of_tables;
+  struct htableslist * _hts;
+  
+  size_t (*_loadtable)(void *, char * tablename, 
+                            char * map);
+  #endif
+  
+} htables;
+
+newclass_h(htables)
+/* */
 
 #endif

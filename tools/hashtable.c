@@ -823,31 +823,9 @@ int clsm(_load_data_section, char * secaddr, uint64_t seclen)
 /* */
 
 /* Load data from file */
-int clsm(_load_data_from_file, char *file_name)
+size_t clsm(_load_data_from_map, char *fmap)
 {
-  int fd;
-  struct stat sb;
-  char * fmap;
   size_t mapcur = 0;
-  
-  fd = open(file_name, O_RDONLY);
-  if (fd<0)
-    perrandexit("open()");
-  
-  if (fstat(fd, &sb)<0)
-    perrandexit("fstat()");
-  
-  if (!(fmap = mmap(NULL, sb.st_size, PROT_READ, MAP_PRIVATE, fd, 0)))
-    perrandexit("mmap()");
-  
-  /* Check for magick */
-  if (memcmp(fmap, FILE_MAGICK, 3))
-  {
-    fprintf(stderr, "Bad magick!\n");
-    return 1;
-  }
-  
-  mapcur += 3;
   
   /* Fill Top level data section. */
   this->_gdata.ht_version_num = (uint32_t)(*(fmap+mapcur));
@@ -895,7 +873,7 @@ int clsm(_load_data_from_file, char *file_name)
       
   }
   
-  return 0;
+  return mapcur;
 }
 /* */
 
@@ -1012,16 +990,8 @@ buffer * _hashtable__fill_full_ha(void * _this)
 /* */
 
 /* Write data */
-int clsm(write_hashtable, char * file_name)
+int clsm(write_hashtable, int fd)
 {
-  printf("Writing data to %s\n", file_name);
-  int fd;
-  
-  fd = open(file_name, O_CREAT|O_WRONLY|O_TRUNC, S_IRUSR|S_IWUSR);
-  
-  printf("Writing magick...\n");
-  write(fd, FILE_MAGICK, sizeof(FILE_MAGICK)-1);
-  
   data_t * dt = &(this->_gdata);
   
   printf("Writing header data section...\n");
@@ -1085,7 +1055,7 @@ int clsm(write_hashtable, char * file_name)
       printf("Section type unknown!\n");
   }
   
-  close(fd);
+  //close(fd);
 }
 /* */
 
@@ -1169,7 +1139,7 @@ int clsm(_initialize_data_sec)
 int clsm(init, void * init_par)
 {
   clsmlnk(_initialize_data_sec);
-  clsmlnk(_load_data_from_file);
+  clsmlnk(_load_data_from_map);
   clsmlnk(_load_props_section);
   clsmlnk(_load_meta_section);
   clsmlnk(_load_data_section);
@@ -1187,8 +1157,12 @@ int clsm(init, void * init_par)
 
   if (ip)
   {
-    if (ip->file_name)
-      CALL(this, _load_data_from_file, ip->file_name);
+    if (ip->map)
+    {
+      this->_fmap_table_entry = ip->map;
+      this->_fmap_table_offs = 
+        CALL(this, _load_data_from_map, ip->map);
+    }
     else
     {
       this->_htp = hcalloc(1, sizeof(ht_props_t));
@@ -1260,4 +1234,196 @@ int clsm(init, void * init_par)
 #endif
 #undef _CLASS_NAME
 /* hashtable object methods ends. */
+/**********************************/
+
+/**************************************/
+/* Implement htables object methods */
+#ifndef _CLASS_NAME
+#define _CLASS_NAME htables
+
+thisclass_creator
+
+hashtable * clsm(newtable, char * tablename, 
+                 struct hashtable_init_params * ip)
+{
+  if (CALL(this, lookup, tablename))
+  {
+    fprintf(stderr, 
+            "htables::lookup() : table name already present!\n");
+    
+    return NULL;
+  }
+  
+  hashtable * t = new(hashtable, ip);
+  
+  struct htableslist ** last = &(this->_hts);
+  
+  for ( ; *last; last=&((*last)->next));
+  
+  *last = hcalloc(1, sizeof(struct htableslist));
+  
+  (*last)->table_name.p = hmalloc(strlf(tablename));
+  (*last)->table_name.pt = P_dyn;
+  memcpy((*last)->table_name.p, tablename, strlf(tablename));
+  
+  (*last)->table = t;
+  
+  this->_num_of_tables++;
+  
+  return t;
+}
+
+int clsm(savetables, char * file_name)
+{
+  printf("Writing data to %s\n", file_name);
+  int fd;
+  
+  fd = open(file_name, O_CREAT|O_WRONLY|O_TRUNC, S_IRUSR|S_IWUSR);
+  
+  printf("Writing magick...\n");
+  write(fd, FILE_MAGICK, sizeof(FILE_MAGICK)-1);
+  
+  printf("Writing _num_of_tables...\n");
+  write(fd, &(this->_num_of_tables), sizeof(this->_num_of_tables));
+  
+  /* Now writing tables*/
+  struct htableslist * c = this->_hts;
+  
+  while(c)
+  {
+    printf("Writing table %s ... \n", c->table_name.p);
+    
+    uint16_t tnamesz = strlf(c->table_name.p);
+    write(fd, &tnamesz, sizeof(tnamesz));
+    write(fd, c->table_name.p, tnamesz);
+    
+    CALL(c->table, write_hashtable, fd);
+    
+    c = c->next;
+  }
+  
+  
+  /* Close fd and return */
+  close(fd);
+  return 0;
+}
+
+size_t clsm(_loadtable, char * tablename, 
+                 char * map)
+{
+  if (CALL(this, lookup, tablename))
+    perrandexit( 
+          "htables::_loadtable() : table name already present!\n");
+  
+  struct hashtable_init_params ip = 
+    {map, NULL, NULL, 0, False, False, 0, False, 0};
+  
+  hashtable * t = new(hashtable, &ip);
+  
+  struct htableslist ** last = &(this->_hts);
+  
+  for ( ; *last; last=&((*last)->next));
+  
+  *last = hcalloc(1, sizeof(struct htableslist));
+  
+  (*last)->table_name.pt = P_unspec;
+  (*last)->table_name.p = tablename;
+  
+  (*last)->table = t;
+  
+  this->_num_of_tables++;
+  
+  return t->_fmap_table_offs;
+}
+
+int clsm(loadtables, char * file_name)
+{
+  int fd;
+  struct stat sb;
+  char * fmap;
+  size_t mapcur = 0;
+  
+  fd = open(file_name, O_RDONLY);
+  if (fd<0)
+    perrandexit("open()");
+  
+  if (fstat(fd, &sb)<0)
+    perrandexit("fstat()");
+  
+  if (!(fmap = mmap(NULL, sb.st_size, PROT_READ, MAP_PRIVATE, fd, 0)))
+    perrandexit("mmap()");
+  
+  /* Check for magick */
+  if (memcmp(fmap, FILE_MAGICK, 3))
+  {
+    fprintf(stderr, "Bad magick!\n");
+    return 1;
+  }
+  
+  mapcur += 3;
+  
+  /* Fill Top level data section. */
+  typeof(this->_num_of_tables) num_of_tables = 
+    (typeof(this->_num_of_tables))(*(fmap+mapcur));
+  mapcur += sizeof(this->_num_of_tables);
+  
+  fprintf(stderr, "num_of_tables = %d\n", num_of_tables);
+  
+  while(this->_num_of_tables < num_of_tables)
+  {
+    uint16_t namesz = (uint16_t)(*(fmap+mapcur));
+    mapcur += sizeof(namesz);
+    
+    char * table_name = fmap+mapcur;
+    mapcur += namesz;
+    
+    /* Load current table and increment _num_of_tables */
+    mapcur += CALL(this, _loadtable, table_name, fmap+mapcur);
+  }
+  
+ return 0; 
+}
+
+hashtable * clsm(lookup, char * table_name)
+{
+  struct htableslist * hl = this->_hts;
+  
+  while(hl)
+  {
+    char * c1 = table_name;
+    char * c2 = hl->table_name.p;
+    
+    while(True)
+    {
+      if (*c1 == *c2)
+      {
+        if (*c1 == '\0')
+          return hl->table;
+      }
+      else
+        break;
+      
+      c1++; c2++;
+    }
+    
+    hl = hl->next;
+  }
+  
+  return NULL;
+}
+
+int clsm(init, void * p)
+{
+  clsmlnk(newtable);
+  clsmlnk(lookup);
+  clsmlnk(savetables);
+  clsmlnk(loadtables);
+  clsmlnk(_loadtable);
+  
+  return 0;
+}
+
+#endif
+#undef _CLASS_NAME
+/* htables object methods ends. */
 /**********************************/
