@@ -3,8 +3,9 @@
 #include "cobj.h"
 #include "hashtable.h"
 
-hashtable * new_ht_dict(
-  char *    file_name, 
+hashtable * new_ht_table(
+  void *    _ht_dicts,
+  char *    table_name,
   char *    hash_algo,
   char *    hash_dl_helper,
   uint32_t  hash_modulus,
@@ -17,7 +18,7 @@ hashtable * new_ht_dict(
 {
   struct hashtable_init_params ip;
   
-  ip.file_name = file_name;
+  ip.map = NULL;
   ip.hash_algo = hash_algo;
   ip.hash_dl_helper = hash_dl_helper;
   ip.hash_modulus = hash_modulus;
@@ -27,11 +28,54 @@ hashtable * new_ht_dict(
   ip.has_fixed_size = (has_fixed_size) ? True : False;
   ip.fixed_size_len = fixed_size_len;
   
-  fprintf(stderr, "Going on with %s\n", file_name);
+  htables * ht_dicts = (htables *)_ht_dicts;
   
-  hashtable * t = new(hashtable, &ip);
+  hashtable * t = CALL(ht_dicts, newtable, table_name, &ip);
   
   return t;
+}
+
+int ht_table_push(
+  void *    _ht_dict,
+  uint32_t  ks, 
+  char *    key, 
+  uint32_t  ds, 
+  char *    data
+)
+{
+  hashtable * t = (hashtable *)_ht_dict;
+  
+  CALL(t, push, (keysize_t)ks, key, ds, data);
+  
+  return 0;
+}
+
+int ht_table_lookup(
+  void *    _ht_dict, 
+  uint32_t  ks, 
+  char *    key,
+  void *    res
+)
+{
+  hashtable * ht_dict = (hashtable *)_ht_dict;
+  
+  int ret = CALL(ht_dict, lookup, (keysize_t)ks, key, NULL, res);
+  
+  return ret;
+}
+
+htables * new_ht_dicts(void)
+{
+  return new(htables, NULL);
+}
+
+int ht_save_dicts(void * t, char * file_name)
+{
+  htables * tt = (htables *)t;
+  
+  CALL(tt, savetables, file_name);
+  
+  return 0;
 }
 
 int ht_print_data(void * t)

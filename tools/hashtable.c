@@ -286,7 +286,7 @@ int _hashtable__lookup_into_class_array_n(
           if (! this->_htp->has_only_key)
           {
             ls->content = (*entry)->contentp.p;
-            if (this->_htp->has_fixed_size)
+            if (!this->_htp->has_fixed_size)
               ls->contentsize = (*entry)->contentsize;
           }
         }
