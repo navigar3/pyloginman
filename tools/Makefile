@@ -1,4 +1,4 @@
-CFLAGS+=-I..
+CFLAGS+=-I.. -fPIC
 
 .PHONY: clean
 
@@ -12,6 +12,12 @@ main.o: main.c hashtable.h ../cobj.h
 
 main: main.o hashtable.o
 	$(CC) $(CFLAGS) -o $@ $^
+	
+ht_dict.o: ht_dict.c hashtable.h ../cobj.h
+	$(CC) -c $(CFLAGS) -o $@ $<
+
+ht_dict.so: ht_dict.o hashtable.o
+	$(CC) -shared -o $@ $^
 
 clean:
 	rm -f *.o main

@@ -5,14 +5,14 @@
 
 int main(void)
 {
-  //struct hashtable_init_params ip = 
-  //  {"ver_0_1_ciao.baf", NULL, NULL, 0, False, False, 0, False, 0};
+  struct hashtable_init_params ip = 
+    {"ver_0_1_ciao.baf", NULL, NULL, 0, False, False, 0, False, 0};
   
   //struct hashtable_init_params ip = 
   //  {NULL, "mod", NULL, 11, False, False, 0, False, 0};
     
-  struct hashtable_init_params ip = 
-    {"ver_0_1_prova2.baf", NULL, NULL, 0, False, False, 0, False, 0};
+  //struct hashtable_init_params ip = 
+  //  {"ver_0_1_prova2.baf", NULL, NULL, 0, False, False, 0, False, 0};
     
   hashtable * t = new(hashtable, &ip);
   
