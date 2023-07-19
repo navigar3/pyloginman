@@ -160,12 +160,12 @@ typedef struct
   }
 #define DF_LD_uint64_t(X) \
   { \
-    _p->X = (uint64_t)(*(_src+_lb)); \
+    _p->X = *((uint64_t *)(_src+_lb)); \
     _lb += sizeof(uint64_t); \
   }
 #define DF_LD_uint32_t(X) \
   { \
-    _p->X = (uint32_t)(*(_src+_lb)); \
+    _p->X = *((uint32_t *)(_src+_lb)); \
     _lb += sizeof(uint32_t); \
   }
 #define DF_LD_bool(X) \
@@ -328,6 +328,7 @@ typedef struct
 {
   int (*init)(void *, void *);
   
+  char * (*get_table_name)(void *);
   uint32_t (*compute_hash)(void *, 
                            uint32_t keysize, char * key);
   int (*add_meta_field)(void *,
@@ -350,6 +351,7 @@ typedef struct
   
   char * _fmap_table_entry;
   size_t _fmap_table_offs;
+  char * _table_name;
   
   data_t _gdata;
   smeta_t * _metadata;
@@ -403,10 +405,10 @@ newclass_h(hashtable)
 #ifdef _HASHTABLE_H_PRIVATE
 struct htableslist
 {
+  struct htableslist * next;
+  
   ptr_t table_name;
   hashtable * table;
-  
-  struct htableslist * next;
 };
 #endif
 
@@ -417,6 +419,10 @@ typedef struct
   hashtable * (*newtable)(void *, char * tablename, 
                   struct hashtable_init_params *);
   hashtable * (*lookup)(void *, char * tablename);
+  uint32_t (*get_num_of_tables)(void *);
+  void * (*get_first_table_ref)(void *);
+  void * (*get_next_table_ref)(void *, void * current_ref);
+  hashtable * (*get_table_by_ref)(void *, void * ref);
   int (*loadtables)(void *, char * file_name);
   int (*savetables)(void *, char * file_name);
   int (*destroy)(void *);

@@ -78,6 +78,50 @@ int ht_save_dicts(void * t, char * file_name)
   return 0;
 }
 
+int ht_load_from_file(void * t, char * file_name)
+{
+  htables * tt = (htables *)t;
+  
+  return CALL(tt, loadtables, file_name);
+}
+
+uint32_t ht_get_num_of_tables(void * t)
+{
+  htables * tt = (htables *)t;
+  
+  return CALL(tt, get_num_of_tables);
+}
+
+void * ht_get_first_table_ref(void * t)
+{
+  htables * tt = (htables *)t;
+  
+  return CALL(tt, get_first_table_ref);
+}
+
+void * ht_get_next_table_ref(void * t, void * cref)
+{
+  htables * tt = (htables *)t;
+  
+  return CALL(tt, get_next_table_ref, cref);
+}
+
+void * ht_get_table_by_ref(void * t, void * ref)
+{
+  htables * tt = (htables *)t;
+  
+  return CALL(tt, get_table_by_ref, ref);
+}
+
+char * ht_get_table_name(void * t)
+{
+  hashtable * tt = (hashtable *)t;
+  
+  char * r = CALL(tt, get_table_name);
+  
+  return r;
+}
+
 int ht_print_data(void * t)
 {
   hashtable * tt = (hashtable *) t;

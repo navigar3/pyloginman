@@ -103,7 +103,7 @@ int clsm(init, void * init_params)
   clsmlnk(get_map);
   clsmlnk(get_mapsz);
   
-  size_t sz = (init_params) ? *((int *)init_params) : 4096;
+  size_t sz = (init_params) ? *((int *)init_params) : (65536*8);
   
   if (!(this->_addr = 
           mmap(NULL, sz, 
@@ -115,7 +115,7 @@ int clsm(init, void * init_params)
     
   this->_msize = sz;
   this->_used = 0;
-  this->_newwinsz = 4096;
+  this->_newwinsz = 65536;
   
   return 0;
 }
@@ -289,6 +289,7 @@ int _hashtable__lookup_into_class_array_n(
             if (!this->_htp->has_fixed_size)
               ls->contentsize = (*entry)->contentsize;
           }
+          
         }
         
         return 0;
@@ -586,12 +587,10 @@ int clsm(print_sample_data)
         {
           fprintf(stderr, "   keysize=%d\n"
                           "    key=%s\n"
-                          "    datasize=%d\n"
-                          "    data=%s\n",
+                          "    datasize=%d\n",
                   ne->keysize,
                   ne->keyp.p,
-                  ne->contentsize,
-                  ne->contentp.p
+                  ne->contentsize
                  );
           ne = ne->next_entry;
         }
@@ -776,14 +775,14 @@ int _hashtable__load_entry_nn(void * _this, char * mp,
 int _hashtable__load_full_ha(void * _this, char * mp)
 {
   uint64_t mp_offs = 0;
-  typeof(this->_num_of_entries) nl;
   typeof(this->_num_of_entries) tot_ne;
   
   /* First load _num_of_entries */
   _CAST_LOAD(mp, tot_ne, mp_offs)
   
+  
   /* Now load entries */
-  for (nl=0; nl<tot_ne; nl++)
+  for ( ; this->_num_of_entries<tot_ne; )
   {
     keysize_t ks;
     uint32_t ds;
@@ -801,7 +800,8 @@ int _hashtable__load_full_ha(void * _this, char * mp)
       mp_offs += 
         _hashtable__load_entry_nn(_this, mp+mp_offs, 
                                   &ks, &pkey, &ds, &pdata);
-                                  
+      
+      //push key and value in dict and increment _num_of_entries
       CALL(this, _push, ks, P_unspec, pkey, ds, P_unspec, pdata, &hme);
     }
   }
@@ -1059,6 +1059,13 @@ int clsm(write_hashtable, int fd)
 }
 /* */
 
+/* Get table name */
+char * clsm(get_table_name)
+{
+  return this->_table_name;
+}
+/* */
+
 /* Initialize data section */
 int clsm(_initialize_data_sec)
 {
@@ -1145,6 +1152,7 @@ int clsm(init, void * init_par)
   clsmlnk(_load_data_section);
   clsmlnk(_append_section);
   clsmlnk(_write_data_meta);
+  clsmlnk(get_table_name);
   clsmlnk(add_meta_field);
   clsmlnk(push);
   clsmlnk(fill_sample_data);
@@ -1268,6 +1276,8 @@ hashtable * clsm(newtable, char * tablename,
   
   (*last)->table = t;
   
+  t->_table_name = (*last)->table_name.p;
+  
   this->_num_of_tables++;
   
   return t;
@@ -1333,6 +1343,8 @@ size_t clsm(_loadtable, char * tablename,
   
   this->_num_of_tables++;
   
+  t->_table_name = (*last)->table_name.p;
+  
   return t->_fmap_table_offs;
 }
 
@@ -1366,8 +1378,6 @@ int clsm(loadtables, char * file_name)
   typeof(this->_num_of_tables) num_of_tables = 
     (typeof(this->_num_of_tables))(*(fmap+mapcur));
   mapcur += sizeof(this->_num_of_tables);
-  
-  fprintf(stderr, "num_of_tables = %d\n", num_of_tables);
   
   while(this->_num_of_tables < num_of_tables)
   {
@@ -1412,9 +1422,39 @@ hashtable * clsm(lookup, char * table_name)
   return NULL;
 }
 
+uint32_t clsm(get_num_of_tables)
+{
+  return (uint32_t)(this->_num_of_tables);
+}
+
+void * clsm(get_first_table_ref)
+{
+  return this->_hts;
+}
+
+void * clsm(get_next_table_ref, void * current_ref)
+{
+  if (current_ref)
+    return ((struct htableslist *)current_ref)->next;
+  else
+    return NULL;
+}
+
+hashtable * clsm(get_table_by_ref, void * ref)
+{
+  if (ref)
+    return ((struct htableslist *)ref)->table;
+  else
+    return NULL;
+}
+
 int clsm(init, void * p)
 {
   clsmlnk(newtable);
+  clsmlnk(get_num_of_tables);
+  clsmlnk(get_first_table_ref);
+  clsmlnk(get_table_by_ref);
+  clsmlnk(get_next_table_ref);
   clsmlnk(lookup);
   clsmlnk(savetables);
   clsmlnk(loadtables);
