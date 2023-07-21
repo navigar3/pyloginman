@@ -1,5 +1,3 @@
-#define _GNU_SOURCE 1
-
 #include <stdio.h>
 #include <malloc.h>
 #include <sys/mman.h>
@@ -19,6 +17,12 @@
 
 #define perrandexit(msg) \
   { perror(msg); exit(EXIT_FAILURE); }
+
+#ifdef DEBUG
+  #define debugmsg(fmt, ...) fprintf(stderr, "DEBUG %s:%d: " fmt, __FILE__, __LINE__, ##__VA_ARGS__)
+#else
+  #define debugmsg(fmt, ...)
+#endif
 
 void * hcalloc(size_t n, size_t s)
 {
@@ -51,11 +55,32 @@ int clsm(_realloc, size_t newsz)
 {
   size_t newsize = (newsz) ? newsz : this->_msize + this->_newwinsz;
   
-  if (!(this->_addr = 
-          mremap(this->_addr, this->_msize, newsize,  MREMAP_MAYMOVE)))
-    perrandexit("mremap()");
+  char * newaddr;
   
+  /* Map memory */
+  if (!(newaddr = 
+          mmap(NULL, newsize, 
+               PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_ANONYMOUS, 
+               -1, 0)
+       )
+     )
+    perrandexit("mmap()");
+    
+  debugmsg("_realloc(): _addr=%x, new=%x diff=%x\n",
+          this->_addr, newaddr, (char *)newaddr-(this->_addr));
+  
+  /* Copy from old map to new map */
+  memcpy(newaddr, this->_addr, this->_used);
+  
+  /* Free old map */
+    if (munmap(this->_addr, this->_msize))
+      perrandexit("munmap()");
+      
+  /* Update map size */
   this->_msize = newsize;
+  
+  /* Update map address */
+  this->_addr = newaddr;
   
   return 0;
 }
@@ -63,12 +88,13 @@ int clsm(_realloc, size_t newsz)
 int clsm(write, size_t bsz, void * p)
 {
   if (this->_used + bsz > this->_msize)
-    CALL(this, _realloc, 0);
+    CALL(this, _realloc, 2*(this->_used + bsz));
   
   char * sp = this->_addr + this->_used;
+  char * pp = (char *)p;
   
-  for (size_t i = 0; i<bsz; i++, sp++, p++)
-    *sp = *((char *)p);
+  for (size_t i = 0; i<bsz; i++, sp++, pp++)
+    *sp = *pp;
   
   this->_used += bsz;
   
@@ -103,11 +129,11 @@ int clsm(init, void * init_params)
   clsmlnk(get_map);
   clsmlnk(get_mapsz);
   
-  size_t sz = (init_params) ? *((int *)init_params) : (65536*8);
+  size_t sz = (init_params) ? *((size_t *)init_params) : 4096;
   
   if (!(this->_addr = 
           mmap(NULL, sz, 
-               PROT_READ | PROT_WRITE, MAP_SHARED | MAP_ANONYMOUS, 
+               PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_ANONYMOUS, 
                -1, 0)
        )
      )
@@ -115,7 +141,7 @@ int clsm(init, void * init_params)
     
   this->_msize = sz;
   this->_used = 0;
-  this->_newwinsz = 65536;
+  this->_newwinsz = 4096;
   
   return 0;
 }
@@ -964,7 +990,7 @@ buffer * _hashtable__fill_full_ha(void * _this)
        imod < this->_htp->hash_modulus; 
        imod++)
   {
-    fprintf(stderr, "filling modulus %d\n", imod);
+    debugmsg("filling modulus %d\n", imod);
     
     hashentry_nn_t * ne = 
       (hashentry_nn_t *)(pha(this->_ht, imod)->first_entry);
@@ -994,22 +1020,22 @@ int clsm(write_hashtable, int fd)
 {
   data_t * dt = &(this->_gdata);
   
-  printf("Writing header data section...\n");
+  debugmsg("Writing header data section...\n");
   write(fd, &(dt->ht_version_num), sizeof(dt->ht_version_num));
   write(fd, &(dt->num_of_sections), sizeof(dt->num_of_sections));
   write(fd, &(dt->sections_global_flags),
         sizeof(dt->sections_global_flags));
   
-  printf("Exploring data...\n");
+  debugmsg("Exploring data...\n");
   
   for (section_t * p = dt->sections_list; p; p = p->next_section)
   {
-    printf("Found new section -> ");
+    debugmsg("Found new section -> ");
     
     if (p->sectype == HT_SECTION_META)
     {
-      printf("metadata section.\n");
-      printf("Writing metadata section header...\n");
+      debugmsg("metadata section.\n");
+      debugmsg("Writing metadata section header...\n");
       write(fd, &(p->sectype), sizeof(p->sectype));
       
       typeof(((smeta_t *)p->sec_content)->seclen) _seclen = 
@@ -1022,8 +1048,8 @@ int clsm(write_hashtable, int fd)
     
     else if (p->sectype == HT_SECTION_PROPS)
     {
-      printf("properties section.\n");
-      printf("Writing properties section header...\n");
+      debugmsg("properties section.\n");
+      debugmsg("Writing properties section header...\n");
       write(fd, &(p->sectype), sizeof(p->sectype));
       write(fd, &(p->seclen), sizeof(p->seclen));
       
@@ -1036,26 +1062,24 @@ int clsm(write_hashtable, int fd)
     
     else if (p->sectype == HT_SECTION_DATA)
     {
-      printf("Data section.\n");
-      printf("Writing data section header...\n");
+      debugmsg("Data section.\n");
+      debugmsg("Writing data section header...\n");
       write(fd, &(p->sectype), sizeof(p->sectype));
       
-      printf("Writing data...\n");
+      debugmsg("Writing data...\n");
       buffer * b = CALL(this, _fill);
       
       uint64_t data_seclen = (uint64_t)(CALL(b, get_mapsz));
-      fprintf(stderr, "map_size = %d\n", data_seclen);
+      debugmsg("map_size = %d\n", data_seclen);
       write(fd, &data_seclen, sizeof(data_seclen));
-      write(fd, CALL(b, get_map), CALL(b, get_mapsz));
+      write(fd, CALL(b, get_map), data_seclen);
       
       CALL(b, destroy);
     }
     
     else
-      printf("Section type unknown!\n");
+      fprintf(stderr, "Section type unknown!\n");
   }
-  
-  //close(fd);
 }
 /* */
 
@@ -1285,15 +1309,15 @@ hashtable * clsm(newtable, char * tablename,
 
 int clsm(savetables, char * file_name)
 {
-  printf("Writing data to %s\n", file_name);
+  debugmsg("Writing data to %s\n", file_name);
   int fd;
   
   fd = open(file_name, O_CREAT|O_WRONLY|O_TRUNC, S_IRUSR|S_IWUSR);
   
-  printf("Writing magick...\n");
+  debugmsg("Writing magick...\n");
   write(fd, FILE_MAGICK, sizeof(FILE_MAGICK)-1);
   
-  printf("Writing _num_of_tables...\n");
+  debugmsg("Writing _num_of_tables...\n");
   write(fd, &(this->_num_of_tables), sizeof(this->_num_of_tables));
   
   /* Now writing tables*/
@@ -1301,7 +1325,7 @@ int clsm(savetables, char * file_name)
   
   while(c)
   {
-    printf("Writing table %s ... \n", c->table_name.p);
+    debugmsg("Writing table %s ... \n", c->table_name.p);
     
     uint16_t tnamesz = strlf(c->table_name.p);
     write(fd, &tnamesz, sizeof(tnamesz));
@@ -1311,7 +1335,6 @@ int clsm(savetables, char * file_name)
     
     c = c->next;
   }
-  
   
   /* Close fd and return */
   close(fd);

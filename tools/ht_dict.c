@@ -73,9 +73,7 @@ int ht_save_dicts(void * t, char * file_name)
 {
   htables * tt = (htables *)t;
   
-  CALL(tt, savetables, file_name);
-  
-  return 0;
+  return CALL(tt, savetables, file_name);
 }
 
 int ht_load_from_file(void * t, char * file_name)

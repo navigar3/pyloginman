@@ -14,7 +14,9 @@ class htdict:
   def push(self, keysize, key, valuesize, value):
     self._hl.ht_table_push(self._dic, keysize, key, valuesize, value)
   
-  def search(self, keysize, key):
+  def search(self, key):
+    keysize = len(key)
+    
     res = lres()
     
     nres = \
@@ -102,4 +104,4 @@ class htdicts:
       self.dl[table_name.decode()] = htdict(self._hl, c_void_p(_dic))
       
   def savedicts(self, file_name):
-    self._hl.ht_save_dicts(self._dics, file_name)
+    return self._hl.ht_save_dicts(self._dics, file_name)

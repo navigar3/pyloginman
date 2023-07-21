@@ -146,4 +146,4 @@ for k in cmap:
   
   d.dl['.glyphs'].push(ckey_len, ckey, len(rastg), rastg)
 
-d.savedicts(b'fonts.baf') 
+print("res = %d " % d.savedicts(b'fonts.baf')) 
