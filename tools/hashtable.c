@@ -161,27 +161,33 @@ thisclass_creator
 uint32_t clsm(compute_hash, uint32_t keysize, char * key)
 {
   uint32_t modulo = 0;
-    
-  /* Split into 4 bytes sequences */
-  uint32_t keywords = (keysize / 4) * 4;
-  int i = 0;
-  for ( ; i<keywords; i+=4)
-    modulo = 
-      (*((uint32_t *)(key + i)) + 
-        modulo) % this->_htp->hash_modulus;
   
-  if (i-keysize)
+  debugmsg("Computing mod with hash_modulus=%d\t"
+           "keysize=%d\n", this->_htp->hash_modulus, keysize);
+  
+  /* Split into 4 bytes sequences */
+  int keywords = (keysize / 4);
+  char * kp = key;
+  
+  debugmsg("keywords = %d\n", keywords);
+  
+  for (int i=0; i<keywords; i++, kp+=4)
+    modulo = 
+      (*((uint32_t *)kp) + modulo) % this->_htp->hash_modulus;
+  
+  int kres = keysize % 4;
+  if (kres)
   {
     uint32_t lastword = 0;
     uint8_t * plastword = ((uint8_t *)&lastword);
     
-    for (int j=i; j<keysize; j++)
-      *(plastword+j) = *(key+j);
+    for (int j=0; j<kres; j++, kp++)
+      *(plastword+j) = *kp;
     
     modulo = (lastword + modulo) % this->_htp->hash_modulus;
   }
   
-  //fprintf(stderr, "Computed modulo=%d\n", modulo);
+  debugmsg("Computed modulo=%d\n", modulo);
   
   return modulo;
 }
@@ -436,7 +442,20 @@ int clsm(push_into_array,
                    keysize, key, &he, NULL);
   
   if (lkres == 0)
-    fprintf(stderr, "Found two matching keys!\n");
+  {
+    fprintf(stderr,
+            " *** In table %s: Found two matching keys!\n",
+            this->_table_name);
+    fprintf(stderr, "   ---> ");
+    for (int ii=0; ii<keysize;
+         fprintf(stderr, "%x [%c]  ", 
+                 *((uint8_t *)key+ii), *((uint8_t *)key+ii)),
+         ii++
+        );
+    fprintf(stderr, "\n   !!! Refusing to push element!\n");
+    
+    return 1;
+  }
   
   /* Add new item to list */
   ne->next_entry = *he;
@@ -500,19 +519,19 @@ int clsm(fill_sample_data)
   htp->hash_modulus = 10;
   htp->seclen += sizeof(htp->hash_modulus);
   
-  htp->has_only_key = False;
+  htp->has_only_key = false;
   htp->seclen += 1;
   
-  htp->has_fixed_key_size = False;
+  htp->has_fixed_key_size = false;
   htp->seclen += 1;
   
   htp->key_size = 0;
   htp->seclen += sizeof(htp->key_size);
   
-  htp->has_fixed_size = False;
+  htp->has_fixed_size = false;
   htp->seclen += 1;
   
-  htp->has_full_hash_array = True;
+  htp->has_full_hash_array = true;
   htp->seclen += 1;
   
   htp->fixed_size_len = 0;
@@ -975,7 +994,7 @@ fungen_hashtable__fill_buff(kn)
 /* */
 
 /* Create and fill data buffer with full dictionary 
- *  when has_full_hash_array is True */
+ *  when has_full_hash_array is true */
 buffer * _hashtable__fill_full_ha(void * _this)
 {
   /* Create new buffer object */
@@ -990,7 +1009,8 @@ buffer * _hashtable__fill_full_ha(void * _this)
        imod < this->_htp->hash_modulus; 
        imod++)
   {
-    debugmsg("filling modulus %d\n", imod);
+    debugmsg("filling modulus %5d having %d entries\n",
+             imod, pha(this->_ht, imod)->num_of_entries);
     
     hashentry_nn_t * ne = 
       (hashentry_nn_t *)(pha(this->_ht, imod)->first_entry);
@@ -1132,7 +1152,7 @@ int clsm(_initialize_data_sec)
     this->compute_hash = _hashtable_compute_hash;
     
     this->_htp->has_full_hash_array = 
-      (this->_htp->hash_modulus < FULL_HASH_MAX_SZ) ? True : False;
+      (this->_htp->hash_modulus < FULL_HASH_MAX_SZ) ? true : false;
     
     if (this->_htp->has_full_hash_array)
     {
@@ -1349,7 +1369,7 @@ size_t clsm(_loadtable, char * tablename,
           "htables::_loadtable() : table name already present!\n");
   
   struct hashtable_init_params ip = 
-    {map, NULL, NULL, 0, False, False, 0, False, 0};
+    {map, NULL, NULL, 0, false, false, 0, false, 0};
   
   hashtable * t = new(hashtable, &ip);
   
@@ -1426,7 +1446,7 @@ hashtable * clsm(lookup, char * table_name)
     char * c1 = table_name;
     char * c2 = hl->table_name.p;
     
-    while(True)
+    while(true)
     {
       if (*c1 == *c2)
       {

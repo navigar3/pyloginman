@@ -22,10 +22,10 @@ hashtable * new_ht_table(
   ip.hash_algo = hash_algo;
   ip.hash_dl_helper = hash_dl_helper;
   ip.hash_modulus = hash_modulus;
-  ip.has_only_key = (has_only_key) ? True: False;
-  ip.has_fixed_key_size = (has_fixed_key_size) ? True : False;
+  ip.has_only_key = (has_only_key) ? true: false;
+  ip.has_fixed_key_size = (has_fixed_key_size) ? true : false;
   ip.key_size = key_size;
-  ip.has_fixed_size = (has_fixed_size) ? True : False;
+  ip.has_fixed_size = (has_fixed_size) ? true : false;
   ip.fixed_size_len = fixed_size_len;
   
   htables * ht_dicts = (htables *)_ht_dicts;

@@ -14,7 +14,7 @@ drm-splash4slack.o: drm-splash4slack.c
 main.o: main.c
 	$(CC) -c $(CFLAGS) -o $@ $?
 
-drm-splash4slack: drm-splash4slack.o kbd-handler.o main.o
+drm-splash4slack: tools/hashtable.o drm-splash4slack.o kbd-handler.o main.o
 	$(CC) $(CFLAGS) -o $@ $^ $(LDFLAGS)
 
 clean:

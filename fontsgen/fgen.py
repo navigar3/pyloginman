@@ -55,15 +55,15 @@ for k in cmap:
 print ('Number of glyphs: %d' % len(cmapval))
 
 print ('Char with max width is [%d] %c\n width=%d' % (kmaxw, chr(kmaxw), maxwidth))
-print ('Char with max height is [%d] %c\n width=%d' % (kmaxh, chr(kmaxh), maxheight))
+print ('Char with max height is [%d] %c\n height=%d' % (kmaxh, chr(kmaxh), maxheight))
 
 #print(cmapval)
 
 #c = chr(9835)
 
-print ("acent=%d\ndescent=%d\noffset x=%d\noffset y=%d\nw=%d\nh=%d\n"
-       "tw=%d\nth=%d\ntoffx=%d\ntoffy=%d" % 
-  (ascent, descent, offx, offy, w, h, tw, th, toffx, toffy))
+#print ("acent=%d\ndescent=%d\noffset x=%d\noffset y=%d\nw=%d\nh=%d\n"
+#       "tw=%d\nth=%d\ntoffx=%d\ntoffy=%d" % 
+#  (ascent, descent, offx, offy, w, h, tw, th, toffx, toffy))
 
 
 def draw_glyph(c):
@@ -126,8 +126,20 @@ from htdicts import htdicts
 
 d = htdicts(libpath='../tools/')
 
-d.newtable(b'.glyphs', hash_modulus=256)
+d.newtable(b'.metrics', hash_modulus=31)
+d.dl['.metrics'].push(b'boxwidth', struct.pack('<I', maxwidth))
+d.dl['.metrics'].push(b'boxheight', struct.pack('<I', maxheight))
+d.dl['.metrics'].push(b'ascent', struct.pack('<I', ascent))
+d.dl['.metrics'].push(b'descent', struct.pack('<I', descent))
 
+d.newtable(b'.reverse_cmap', hash_modulus=179)
+for k in cmap:
+  c = chr(k)
+  #print (cmap[k].encode(), '  ', c.encode())
+  d.dl['.reverse_cmap'].push(cmap[k].encode(), c.encode())
+
+
+d.newtable(b'.glyphs', hash_modulus=311)
 for k in cmap:
   c = chr(k)
   
@@ -139,11 +151,8 @@ for k in cmap:
   if rastg is None:
     continue
   
-  ckey = c.encode()
-  ckey_len = len(ckey)
+  #print('push key ', c, ' as ', c.encode())
   
-  print('push key ', c, ' as ', ckey)
-  
-  d.dl['.glyphs'].push(ckey_len, ckey, len(rastg), rastg)
+  d.dl['.glyphs'].push(c.encode(), rastg)
 
-print("res = %d " % d.savedicts(b'fonts.baf')) 
+print("res = %d " % d.savedicts(b'fonts2.baf')) 

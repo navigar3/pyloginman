@@ -4,9 +4,11 @@
 
 
 #include <stdint.h>
+#include <stdbool.h>
 
+//typedef enum {False, True} bool;
 
-typedef enum {False, True} bool;
+typedef bool __bool;
 
 typedef uint16_t keysize_t;
 
@@ -129,7 +131,7 @@ typedef struct
     memcpy(_dest+_wb, &(_p->X), _len); \
     _wb += _len; \
   }
-#define DF_CPY_bool(X) \
+#define DF_CPY___bool(X) \
   { \
     uint8_t _val = (uint8_t)(_p->X); \
     memcpy(_dest+_wb, &_val, 1); \
@@ -168,7 +170,7 @@ typedef struct
     _p->X = *((uint32_t *)(_src+_lb)); \
     _lb += sizeof(uint32_t); \
   }
-#define DF_LD_bool(X) \
+#define DF_LD___bool(X) \
   { \
     _p->X = (bool)(*(_src+_lb)); \
     _lb += 1; \
@@ -183,11 +185,11 @@ typedef struct
   ((void,      * (*hash_fun_init)(void * start)))\
   ((void,      * (*hash_function)(void * data)))\
   ((uint32_t,  hash_modulus))\
-  ((bool,      has_only_key))\
-  ((bool,      has_fixed_key_size))\
+  ((__bool,      has_only_key))\
+  ((__bool,      has_fixed_key_size))\
   ((uint32_t,  key_size))\
-  ((bool,      has_full_hash_array))\
-  ((bool,      has_fixed_size))\
+  ((__bool,      has_full_hash_array))\
+  ((__bool,      has_fixed_size))\
   ((uint32_t,  fixed_size_len))
 
 #endif

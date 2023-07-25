@@ -84,6 +84,26 @@ void set_terminal_mode(void)
 }
 
 
+/* Read a multibyte sequence originated from buffered terminal
+ * key stroke. Store in buff and return bytes read. */
+int blocking_read_multibytes_from_term(char * buff)
+{
+    
+  tcflush(STDIN_FILENO, TCIOFLUSH);
+  
+  read(STDIN_FILENO, buff, 1);
+  
+  int n;
+  
+  ioctl(STDIN_FILENO, FIONREAD, &n);
+  
+  if (n>0)
+    read(STDIN_FILENO, buff+1, n);
+  
+  return n+1;
+}
+
+
 /* Handle Virtual Terminal switch manually. 
  *  int drm_fd: Direct Rendering Manager file descriptor;
  *  int to_tty: ttynumber to activate. */

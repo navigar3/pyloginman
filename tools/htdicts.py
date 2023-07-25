@@ -11,7 +11,9 @@ class htdict:
     self._hl = htlib
     self._dic = p
   
-  def push(self, keysize, key, valuesize, value):
+  def push(self, key, value):
+    keysize = len(key)
+    valuesize = len(value)
     self._hl.ht_table_push(self._dic, keysize, key, valuesize, value)
   
   def search(self, key):
