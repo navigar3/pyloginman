@@ -45,6 +45,8 @@ typedef struct
 #define _this_obj_ptr(x) ( ( x * ) _this )
 #define _thisclassname(x) x
 #define _newclsn(x) newclass_creator(x)
+#define _Parent(x) ((_Parent_nm_cat(_PARENT_CLASS_, x) *)(this->__Parent))
+#define _Parent_nm_cat(x, y) x ## y
 #define _class_nm_cat(x, y) _class_nm_cat_primitive(x, y)
 #define _class_nm_cat_primitive(x, y) _ ## x ## _ ## y
 #define _class_nm_args(x, ...) ( void * _this, ##__VA_ARGS__ )
@@ -54,6 +56,8 @@ typedef struct
 #define thisclassname _thisclassname(_CLASS_NAME)
 
 #define thisclass_creator _newclsn(_CLASS_NAME)
+
+#define Parent _Parent(_CLASS_NAME)
 
 #define clsm(met, ...) _class_nm_cat(_CLASS_NAME, met) _class_nm_args(_CLASS_NAME, ##__VA_ARGS__)
 

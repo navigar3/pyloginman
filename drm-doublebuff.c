@@ -19,71 +19,57 @@
 #include "drm-doublebuff.h"
 
 
+/*************************************/
+/* Implement videoterm class methods */
+#ifndef _CLASS_NAME
+#define _CLASS_NAME videoterm
+
+
+#endif
+#undef _CLASS_NAME
+/* videoterm object methods ends. */
+/**********************************/
+
+
 /***********************************/
 /* Implement monitor class methods */
 #ifndef _CLASS_NAME
 #define _CLASS_NAME monitor
 
-thisclass_creator
-
-int clsm(_initialize_monitor, drmModeConnector * conn)
-{
-	/* check if a monitor is connected */
-	if (conn->connection != DRM_MODE_CONNECTED)
-  {
-		fprintf(stderr, "ignoring unused connector %u\n",
-			conn->connector_id);
-		return -ENOENT;
-	}
-
-	/* check if there is at least one valid mode */
-	if (conn->count_modes == 0)
-  {
-		fprintf(stderr, "no valid mode for connector %u\n",
-			conn->connector_id);
-		return -EFAULT;
-	}
-  
-  /* Allocate memory for dev */
-  this->_dev = hcalloc(1, sizeof(struct modeset_dev));
-
-	/* copy the mode information into our device structure and into both
-	 * buffers */
-	memcpy(&(this->_dev->mode), &conn->modes[0], 
-         sizeof(this->_dev->mode));
-	this->_dev->bufs[0].width = conn->modes[0].hdisplay;
-	this->_dev->bufs[0].height = conn->modes[0].vdisplay;
-	this->_dev->bufs[1].width = conn->modes[0].hdisplay;
-	this->_dev->bufs[1].height = conn->modes[0].vdisplay;
-  this->_dev->bufs[2].width = conn->modes[0].hdisplay;
-	this->_dev->bufs[2].height = conn->modes[0].vdisplay;
-  this->_dev->conn = conn->connector_id;
-	fprintf(stderr, "mode for connector %u is %ux%u\n",
-		conn->connector_id, 
-    this->_dev->bufs[0].width, this->_dev->bufs[0].height);
-  
-  return 0;
-}
-
-int clsm(init, void * init_params)
-{
-  clsmlnk(_initialize_monitor);
-  
-  return 0;
-}
-
-#endif
-#undef _CLASS_NAME
-/* monitor object methods ends. */
-/********************************/
-
-
-/************************************/
-/* Implement drmvideo class methods */
-#ifndef _CLASS_NAME
-#define _CLASS_NAME drmvideo
+#define _PARENT_CLASS_monitor drmvideo
 
 thisclass_creator
+
+/* Create videoterminal */
+videoterm * clsm(videoterminal, uint32_t fontID)
+{
+  if (this->_vt)
+  {
+    fprintf(stderr, "Monitor %d has already a videoterminal!\n",
+                    this->_monID);
+    return NULL;
+  }
+  
+  if (Parent->_num_of_fonts == 0)
+  {
+    fprintf(stderr, "There aren't fonts available!\n");
+    return NULL;
+  }
+  
+  htables * f = NULL;
+  for (struct fonts_list * it = Parent->_fonts; it; it=it->next)
+    if (it->fontID == fontID)
+      f = it->font;
+  
+  if (!f)
+  {
+    fprintf(stderr, "Font %d not found!\n");
+    return NULL;
+  }
+  
+  return NULL;
+  
+}
 
 /*
  * modeset_create_fb() is mostly the same as before. Buf instead of writing the
@@ -91,20 +77,20 @@ thisclass_creator
  * Please note that buf->width and buf->height are initialized by
  * modeset_setup_dev() so we can use them here.
  */
-int clsm(_modeset_create_fbs, monitor * mon)
+int clsm(_modeset_create_fbs)
 {
 	struct drm_mode_create_dumb creq;
 	struct drm_mode_destroy_dumb dreq;
 	struct drm_mode_map_dumb mreq;
 	int ret;
   
-  int fd = this->_drm_fd;
+  int fd = Parent->_drm_fd;
   
   struct modeset_buf * buf;
   
   for (int ibuf = 0; ibuf<3; ibuf++)
   {
-    buf = &(mon->_dev->bufs[ibuf]);
+    buf = &(this->_dev->bufs[ibuf]);
     
     /* create dumb buffers */
     memset(&creq, 0, sizeof(creq));
@@ -173,15 +159,15 @@ err_destroy:
  * used to do this directly in modeset_cleanup().
  * We simply unmap the buffer, remove the drm-FB and destroy the memory buffer.
  */
-int clsm(_modeset_destroy_fbs, monitor * mon)
+int clsm(_modeset_destroy_fbs)
 {
 	struct drm_mode_destroy_dumb dreq;
   
-  int fd = this->_drm_fd;
+  int fd = Parent->_drm_fd;
 
   for (int ibuf = 0; ibuf<3; ibuf++)
   {
-    struct modeset_buf * buf = &(mon->_dev->bufs[ibuf]);
+    struct modeset_buf * buf = &(this->_dev->bufs[ibuf]);
     /* unmap buffer */
     munmap(buf->map, buf->size);
   
@@ -197,7 +183,201 @@ int clsm(_modeset_destroy_fbs, monitor * mon)
   return 0;
 }
 
-int clsm(modeset_prepare_monitor, uint32_t monID)
+/* Initialize monitor */
+int clsm(_initialize_monitor, drmModeConnector * conn)
+{
+	/* check if a monitor is connected */
+	if (conn->connection != DRM_MODE_CONNECTED)
+  {
+		fprintf(stderr, "ignoring unused connector %u\n",
+			conn->connector_id);
+		return -ENOENT;
+	}
+
+	/* check if there is at least one valid mode */
+	if (conn->count_modes == 0)
+  {
+		fprintf(stderr, "no valid mode for connector %u\n",
+			conn->connector_id);
+		return -EFAULT;
+	}
+  
+  /* Allocate memory for dev */
+  this->_dev = hcalloc(1, sizeof(struct modeset_dev));
+
+	/* copy the mode information into our device structure and into the 3
+	 * buffers */
+	memcpy(&(this->_dev->mode), &conn->modes[0], 
+         sizeof(this->_dev->mode));
+	this->_dev->bufs[0].width = conn->modes[0].hdisplay;
+	this->_dev->bufs[0].height = conn->modes[0].vdisplay;
+	this->_dev->bufs[1].width = conn->modes[0].hdisplay;
+	this->_dev->bufs[1].height = conn->modes[0].vdisplay;
+  this->_dev->bufs[2].width = conn->modes[0].hdisplay;
+	this->_dev->bufs[2].height = conn->modes[0].vdisplay;
+  this->_dev->conn = conn->connector_id;
+	fprintf(stderr, "mode for connector %u is %ux%u\n",
+		conn->connector_id, 
+    this->_dev->bufs[0].width, this->_dev->bufs[0].height);
+  
+  return 0;
+}
+
+int clsm(destroy)
+{
+  
+  /* restore saved CRTC configuration */
+  if (this->_enabled)
+  {
+    drmModeSetCrtc(Parent->_drm_fd,
+                   this->_dev->saved_crtc->crtc_id,
+                   this->_dev->saved_crtc->buffer_id,
+                   this->_dev->saved_crtc->x,
+                   this->_dev->saved_crtc->y,
+                   &(this->_dev->conn),
+                   1,
+                   &(this->_dev->saved_crtc->mode));
+    drmModeFreeCrtc(this->_dev->saved_crtc);
+  }
+
+  /* destroy videoterm */
+  //if (this->_vt)
+  //  CALL(this->_vt, destroy);
+
+  /* destroy framebuffers */
+  if (this->_ready)
+    CALL(this, _modeset_destroy_fbs);
+  
+  /* Free saved _conn */
+  if (this->_conn)
+    drmModeFreeConnector(this->_conn);
+  
+  /* free _dev */
+  if (this->_dev)
+    free(this->_dev);
+  
+  /* free this */
+  free(this);
+  
+  return 0;
+}
+
+/* Draw rectangle */
+int clsm(draw_rectangle, uint32_t x0, uint32_t y0,
+                         uint32_t rw, uint32_t rh,
+                         uint32_t color)
+{
+  unsigned int off;
+  struct modeset_buf * buf;
+  
+  int ret;
+  
+  /* Check if monitor is enabled */
+  if (!this->_enabled)
+  {
+    fprintf(stderr, "Cannot draw on disabled monitor!\n");
+    return -1;
+  }
+  
+  /* Select backward buffer and operate on it. */
+  buf = &(this->_dev->bufs[this->_dev->front_buf ^ 1]);
+  
+  /* Check data */
+  if ((y0 >= buf->height) || (y0+rh>=buf->height) ||
+      (x0 >= buf->width)  || (x0+rw>=buf->width))
+  {
+    fprintf(stderr, "Wrong boundaries for this monitor!\n");
+    return -1;
+  }
+  
+  /* Draw rectangle on backward buffer */
+  for (unsigned int j = y0; j < y0+rh; ++j)
+  {
+    for (unsigned int k = x0; k < x0+rw; ++k) 
+    {
+      off = buf->stride * j + k * 4;
+      *(uint32_t*)&buf->map[off] = color;
+    }
+  }
+  
+  /* Flip buffers */
+  ret = drmModeSetCrtc(Parent->_drm_fd, 
+                       this->_dev->crtc, buf->fb, 0, 0,
+                       &this->_dev->conn, 1, &this->_dev->mode);
+  if (ret)
+  {
+    fprintf(stderr, "cannot flip CRTC for connector %u (%d): %m\n",
+            this->_dev->conn, errno);
+    return -1;
+  }
+  else
+    this->_dev->front_buf ^= 1;
+    
+  /* Select the new backward buffer and copy data on it. */
+  buf = &(this->_dev->bufs[this->_dev->front_buf ^ 1]);
+  
+  for (unsigned int j = y0; j < y0+rh; ++j)
+  {
+    for (unsigned int k = x0; k < x0+rw; ++k) 
+    {
+      off = buf->stride * j + k * 4;
+      *(uint32_t*)&buf->map[off] = color;
+    }
+  }
+  
+  return 0;
+}
+
+/* Initialize object */
+int clsm(init, void * init_params)
+{
+  clsmlnk(_initialize_monitor);
+  clsmlnk(_modeset_create_fbs);
+  clsmlnk(_modeset_destroy_fbs);
+  clsmlnk(draw_rectangle);
+  clsmlnk(destroy);
+  
+  return 0;
+}
+
+#endif
+#undef _CLASS_NAME
+/* monitor object methods ends. */
+/********************************/
+
+
+/************************************/
+/* Implement drmvideo class methods */
+#ifndef _CLASS_NAME
+#define _CLASS_NAME drmvideo
+
+thisclass_creator
+
+/*
+ * modeset_cleanup() stays the same as before. But it now calls
+ * modeset_destroy_fb() instead of accessing the framebuffers directly.
+ */
+int clsm(_modeset_cleanup)
+{
+	for (int i=0; i<this->_num_of_monitors; i++) 
+  {
+    monitor * mon = *(this->_monitors+i);
+    
+    if (! mon)
+      continue;
+    
+    /* Destroy object */
+    CALL(mon, destroy);
+
+		/* Set pointer to NULL */
+		*(this->_monitors+i) = NULL;
+	}
+  
+  return 0;
+}
+
+/* Setup monitor */
+int clsm(setup_monitor, uint32_t monID)
 {
   int ret;
   
@@ -215,13 +395,21 @@ int clsm(modeset_prepare_monitor, uint32_t monID)
     return -1;
   }
   
+  if (mon->_ready)
+  {
+    fprintf(stderr, "monitor monID is ready!\n");
+    return -1;
+  }
+  
   /* create framebuffers for this CRTC */
-	ret = CALL(this, _modeset_create_fbs, mon);
+	ret = CALL(mon, _modeset_create_fbs);
 	if (ret) {
 		fprintf(stderr, "cannot create framebuffers for connector %u\n",
 			mon->_conn->connector_id);
 		return ret;
 	}
+  
+  mon->_ready = true;
 
 	return 0;
 }
@@ -245,15 +433,35 @@ int clsm(enable_monitor, uint32_t monID)
     return -1;
   }
   
+  if(!mon->_ready)
+  {
+    fprintf(stderr, "monitor monID is not ready!\n");
+    return -1;
+  }
+  
+  if (mon->_enabled)
+  {
+    fprintf(stderr, "monitor monID is already enabled!\n");
+    return -1;
+  }
+  
   
   mon->_dev->saved_crtc = drmModeGetCrtc(this->_drm_fd, 
                                          mon->_dev->crtc);
+                                         
   struct modeset_buf * buf = &(mon->_dev->bufs[mon->_dev->front_buf]);
-  ret = drmModeSetCrtc(this->_drm_fd, mon->_dev->crtc, buf->fb, 0, 0,
-				     &(mon->_dev->conn), 1, &(mon->_dev->mode));
+  ret = drmModeSetCrtc(this->_drm_fd, 
+                       mon->_dev->crtc, buf->fb, 0, 0,
+                       &(mon->_dev->conn), 
+                       1, &(mon->_dev->mode));
   if (ret)
+  {
     fprintf(stderr, "cannot set CRTC for connector %u (%d): %m\n",
             mon->_dev->conn, errno);
+    return ret;
+  }
+  
+  mon->_enabled = true;
   
   return 0;
 }
@@ -393,6 +601,8 @@ int clsm(_modeset_prepare)
     mon->_monID = i;
     /* Save conn for future operation and do not free it */
     mon->_conn = conn;
+    /* Link __Parent */
+    mon->__Parent = (void *)this;
     /* Store object in array */
     *(this->_monitors+i) = mon;
     
@@ -441,16 +651,139 @@ int clsm(_modeset_open)
 	return 0;
 }
 
+/* get monitor object by ID */
+monitor * clsm(get_monitor_by_ID, uint32_t monID)
+{
+  if (monID >= this->_num_of_monitors)
+  {
+    fprintf(stderr, "monitor ID out of range!\n");
+    return NULL;
+  }
+  
+  monitor * mon = *(this->_monitors + monID);
+  
+  return mon;
+}
+
+/* destroy object */
+int clsm(destroy)
+{
+  /* Cleanup monitors */
+  CALL(this, _modeset_cleanup);
+  
+  /* Free resource data */
+  if (this->_res)
+    drmModeFreeResources(this->_res);
+  
+  /* Free _monitors */
+  if (this->_monitors)
+    free (this->_monitors);
+  
+  /* Free _fonts */
+  struct fonts_list * to_free;
+  struct fonts_list * node = this->_fonts;
+  for ( ; node; )
+  {
+    to_free = node;
+    node = node->next;
+    
+    /* Need to Destroy fonts */
+    
+    /* free node */
+    free(to_free);
+  }
+  
+  /* Close _drm_fd*/
+  close(this->_drm_fd);
+  
+  /* Free this */
+  free(this);
+  
+  return 0;
+}
+
+/* Load font from file */
+int clsm(load_font_from_file, char * font_file_name)
+{
+  htables * f = new(htables, NULL);
+  
+  if (!f)
+  {
+    fprintf(stderr, "Error while creating new font object!\n");
+    return 1;
+  }
+  
+  if (CALL(f, loadtables, font_file_name))
+  {
+    fprintf(stderr, "Cannot load font from %s!\n", font_file_name);
+    return 1;
+  }
+  
+  hashtable * metrics;
+  if (!(metrics = CALL(f, lookup, ".metrics")))
+  {
+    fprintf(stderr, "Cannot find metrics table!\n");
+    return 1;
+  }
+  
+  /* Load metrics data */
+  char * metrics_data_key[] = {
+      "boxwidth", "boxheight", "ascent", "descent" 
+    };
+  uint32_t metrics_data[4];
+  struct lookup_res lr;
+  for (unsigned int i=0; i<4; i++)
+  {
+    if (CALL(metrics, lookup, 
+             strlen(metrics_data_key[i]), metrics_data_key[i],
+             NULL, &lr)
+       )
+    {
+      fprintf(stderr, "Cannot find metrics key %s!\n",
+              metrics_data_key[i]);
+      return 1;
+    }
+    metrics_data[i] = *((uint32_t *)(lr.content));
+  }
+  
+  
+  /* Create list node, fill it and append to list */
+  struct fonts_list * fl = hcalloc(1, sizeof(struct fonts_list));
+  fl->fontID = this->_num_of_fonts;
+  fl->font = f;
+  
+  uint32_t * p = &(fl->boxwidth);
+  for (unsigned int i=0; i<4; *(p+i) = metrics_data[i], i++);
+  
+  struct fonts_list ** iter = &this->_fonts;
+  for ( ; *iter; iter=&(*iter)->next);
+  *iter = fl;
+  
+  this->_num_of_fonts++;
+  
+  fprintf(stderr, "Font %s loaded.\n"
+                  "  Box width = %d\n"
+                  "  Box height = %d\n"
+                  "  Ascent = %d\n"
+                  "  Descent = %d\n", font_file_name,
+                  fl->boxwidth, fl->boxheight, 
+                  fl->ascent, fl->descent);
+  
+  return 0;
+}
+
 /* initialize object */
 int clsm(init, void * init_params)
 {
   clsmlnk(_modeset_open);
   clsmlnk(_modeset_prepare);
   clsmlnk(_modeset_find_crtc);
-  clsmlnk(_modeset_create_fbs);
-  clsmlnk(_modeset_destroy_fbs);
-  clsmlnk(modeset_prepare_monitor);
+  clsmlnk(_modeset_cleanup);
+  clsmlnk(setup_monitor);
   clsmlnk(enable_monitor);
+  clsmlnk(get_monitor_by_ID);
+  clsmlnk(load_font_from_file);
+  clsmlnk(destroy);
   
   this->_card = (char *)init_params;
   

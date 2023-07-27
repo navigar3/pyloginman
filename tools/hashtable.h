@@ -33,9 +33,6 @@ typedef char * string_t;
 #define HT_VERSION 0x00000001
 #define FILE_MAGICK "htd"
 
-void * hmalloc(size_t s);
-void * hcalloc(size_t n, size_t s);
-
 /* Store in memory data before write it to file. 
  *  Keep track of allocation size and extend if needed */
 typedef struct 
@@ -339,8 +336,22 @@ typedef struct
   int (*push)(void *, 
               keysize_t keysize, char * key, 
               uint32_t datasize, void * data);
+  
+  /* Search for key into table.
+   *  
+   *  if key is found: a) store pointer to key entry struct into 
+   *                      *resptr if resptr is not null;
+   *                   b) fill *ls stucture if ls is not null;
+   *                   c) return 0.
+   * 
+   *  if key is not found:
+   *                   a) store pointer to first key_ entry struct 
+   *                      where key_ < key into *resptr if 
+   *                      resptr is not null;
+   *                   b) return -1. */
   int (*lookup)(void *, keysize_t ks, char * key, 
                   void * resptr, struct lookup_res *);
+                  
   int (*write_hashtable)(void *, int fd);
   int (*destroy)(void *);
   
