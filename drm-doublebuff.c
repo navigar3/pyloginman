@@ -24,6 +24,168 @@
 #ifndef _CLASS_NAME
 #define _CLASS_NAME videoterm
 
+#define _PARENT_CLASS_videoterm monitor
+
+thisclass_creator
+
+/* draw 4 bits depth glyph for char key on 
+ * terminal and advance cursor. */
+int clsm(putc_and_advance, uint32_t ks, char * key)
+{
+  int ret;
+  struct modeset_buf * buf;
+  struct modeset_buf * fbuf;
+  uint32_t tapecur = 0;
+  uint32_t pxal;
+  
+  /* Check if monitor is enabled */
+  if (!(Parent->_enabled))
+  {
+    fprintf(stderr, "Cannot draw on disabled monitor!\n");
+    return -1;
+  }
+  
+  /* Search key in .glyphs table */
+  struct lookup_res lr;
+  if(CALL(this->_glyphs, lookup, ks, key, NULL, &lr))
+    goto putc_and_advance__advance;
+  
+  /* Glyph metrics */
+  struct glyph_metrics_s * gm = (struct glyph_metrics_s *)lr.content;
+  
+  /* Get drm fd*/
+  int drm_fd = ((drmvideo *)(Parent->__Parent))->_drm_fd;
+  
+  /* Get glyph map */
+  char * px = ((char *)(lr.content)) + sizeof(struct glyph_metrics_s);
+  
+  /* Select backward buffer and operate on it. */
+  buf = &(Parent->_dev->bufs[Parent->_dev->front_buf ^ 1]);
+  
+  /* Get front buffer */
+  fbuf = &(Parent->_dev->bufs[Parent->_dev->front_buf]);
+  
+  /* Draw glyph on backward buffer */
+  unsigned int x0 = this->_fm->boxwidth * this->_curx + gm->offx;
+  unsigned int y0 = this->_fm->boxheight * this->_cury + gm->offy;
+  unsigned int xmax = x0 + gm->gw;
+  unsigned int ymax = y0 + gm->gh;
+  unsigned int off;
+  //fprintf(stderr, "x0=%d, y0=%d, gw=%d, gh=%d\n", x0, y0, gm->gw, gm->gh);
+  char sw = 0;
+  
+  for (unsigned int j = y0; j < ymax; ++j)
+  {
+    for (unsigned int k = x0; k < xmax; ++k) 
+    {
+      off = buf->stride * j + k * 4;
+      if (sw)
+      {
+        pxal = (uint32_t)(*px & 0x0f);
+        px++;
+        sw = 0;
+        if (pxal == 0) /* pixel opacity 1 */
+        {
+          *(uint32_t*)&buf->map[off] = 
+            (*(uint32_t*)&buf->map[off] & 0xff000000 ) | this->_fc;
+          *(uint32_t*)&fbuf->map[off] = *(uint32_t*)&buf->map[off];
+        }
+        else if (pxal == 15) /* pixel opacity 0 */
+          continue;
+        else
+        {
+          *(uint32_t*)&buf->map[off] = 
+            _alphacol4h(*(uint32_t*)&buf->map[off], this->_fc, pxal); 
+          
+          /* Update front buffer now */
+          *(uint32_t*)&fbuf->map[off] = *(uint32_t*)&buf->map[off];
+        }
+      }
+      else
+      {
+        pxal = (uint32_t)((*px & 0xf0) >> 4);
+        sw = 1;
+        if (pxal == 0) /* pixel opacity 1 */
+        {
+          *(uint32_t*)&buf->map[off] = 
+            (*(uint32_t*)&buf->map[off] & 0xff000000 ) | this->_fc;
+          *(uint32_t*)&fbuf->map[off] = *(uint32_t*)&buf->map[off];
+        }
+        else if (pxal == 15) /* pixel opacity 0 */
+          continue;
+        else
+        {
+          *(uint32_t*)&buf->map[off] = 
+            _alphacol4h(*(uint32_t*)&buf->map[off], this->_fc, pxal);
+          
+          /* Update front buffer now */
+          *(uint32_t*)&fbuf->map[off] = *(uint32_t*)&buf->map[off];
+        }
+      }
+    }
+  }
+  
+  /* Flip buffers */
+  ret = drmModeSetCrtc(drm_fd, 
+                       Parent->_dev->crtc, buf->fb, 0, 0,
+                       &Parent->_dev->conn, 1, &Parent->_dev->mode);
+  if (ret)
+  {
+    fprintf(stderr, "cannot flip CRTC for connector %u (%d): %m\n",
+            Parent->_dev->conn, errno);
+    return -1;
+  }
+  else
+    Parent->_dev->front_buf ^= 1;
+
+putc_and_advance__advance:
+  tapecur = (this->_cols * this->_cury) + this->_curx + 1;
+  if (tapecur >= (this->_rows * this->_cols)) tapecur = 0;
+  this->_cury = tapecur / this->_cols;
+  this->_curx = tapecur % this->_cols;
+
+  return 0;
+}
+
+/* destroy object */
+int clsm(destroy)
+{
+  free(this);
+  
+  return 0;
+}
+
+/* Initialize videoterm object */
+int clsm(init, void * init_params)
+{
+  clsmlnk(destroy);
+  clsmlnk(putc_and_advance);
+  
+  struct vt_init_par_s * ip = (struct vt_init_par_s *)init_params;
+  this->__Parent = ip->par;
+  this->_font = (htables *)(ip->font);
+  this->_fm = (struct font_metrics_s *)(ip->fmetr);
+  this->_fc = 0x00000000; /* Black font color mask 
+                              (set alpha bits to 0xff)*/
+  
+  
+  this->_glyphs = CALL(this->_font, lookup, ".glyphs");
+  if (!this->_glyphs)
+  {
+    fprintf(stderr, "Cannot load .glyphs table\n!");
+    return 1;
+  }
+  
+  this->_rows = Parent->_dev->bufs[0].height / this->_fm->boxheight;
+  this->_cols = Parent->_dev->bufs[0].width / this->_fm->boxwidth;
+  
+  fprintf(stderr, "New videoterminal for monitor %d\n"
+                  "  terminal rows = %d\n"
+                  "  terminal cols = %d\n", 
+                  Parent->_monID, this->_rows, this->_cols);
+  
+  return 0;
+}
 
 #endif
 #undef _CLASS_NAME
@@ -56,18 +218,20 @@ videoterm * clsm(videoterminal, uint32_t fontID)
     return NULL;
   }
   
-  htables * f = NULL;
-  for (struct fonts_list * it = Parent->_fonts; it; it=it->next)
+  struct fonts_list * it = Parent->_fonts;
+  for ( ; it; it=it->next)
     if (it->fontID == fontID)
-      f = it->font;
+      break;
   
-  if (!f)
+  if (!it->font)
   {
     fprintf(stderr, "Font %d not found!\n");
     return NULL;
   }
   
-  return NULL;
+  struct vt_init_par_s vt_init_p = {this, it->font, &it->fm};
+  
+  return new(videoterm, &vt_init_p);
   
 }
 
@@ -241,8 +405,8 @@ int clsm(destroy)
   }
 
   /* destroy videoterm */
-  //if (this->_vt)
-  //  CALL(this->_vt, destroy);
+  if (this->_vt)
+    CALL(this->_vt, destroy);
 
   /* destroy framebuffers */
   if (this->_ready)
@@ -334,6 +498,7 @@ int clsm(init, void * init_params)
   clsmlnk(_initialize_monitor);
   clsmlnk(_modeset_create_fbs);
   clsmlnk(_modeset_destroy_fbs);
+  clsmlnk(videoterminal);
   clsmlnk(draw_rectangle);
   clsmlnk(destroy);
   
@@ -752,7 +917,7 @@ int clsm(load_font_from_file, char * font_file_name)
   fl->fontID = this->_num_of_fonts;
   fl->font = f;
   
-  uint32_t * p = &(fl->boxwidth);
+  uint32_t * p = (uint32_t *)&(fl->fm);
   for (unsigned int i=0; i<4; *(p+i) = metrics_data[i], i++);
   
   struct fonts_list ** iter = &this->_fonts;
@@ -766,8 +931,8 @@ int clsm(load_font_from_file, char * font_file_name)
                   "  Box height = %d\n"
                   "  Ascent = %d\n"
                   "  Descent = %d\n", font_file_name,
-                  fl->boxwidth, fl->boxheight, 
-                  fl->ascent, fl->descent);
+                  fl->fm.boxwidth, fl->fm.boxheight, 
+                  fl->fm.ascent, fl->fm.descent);
   
   return 0;
 }
@@ -805,9 +970,7 @@ out_return:
 	if (ret) {
 		errno = -ret;
 		fprintf(stderr, "modeset failed with error %d: %m\n", errno);
-	} else {
-		fprintf(stderr, "exiting\n");
-	}
+  }
 	
   return ret;
 }

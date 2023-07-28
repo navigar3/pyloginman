@@ -8,6 +8,8 @@ import numpy as np
 
 import struct
 
+import sys
+
 fname = 'font.ttf'
 fsize = 64
 
@@ -31,7 +33,7 @@ kmaxh = 0
 for k in cmap:
   c = chr(k)
   
-  print('Rendering [' + str(k) + '] ' + c + ' ...')
+  #print('Rendering [' + str(k) + '] ' + c + ' ...')
 
   (offx, offy, w, h) = font.getbbox(c)
   
@@ -44,12 +46,12 @@ for k in cmap:
                 'offx': offx, 'offy': offy, 'w': w, 'h': h,
                 'toffx': toffx, 'toffy': toffy, 'tw': tw, 'th': th}
   
-  if offx+toffx+tw > maxwidth:
-    maxwidth = offx+toffx+tw
+  if w > maxwidth:
+    maxwidth = w
     kmaxw = k
   
-  if offy+toffy+th > maxheight:
-    maxheight = offy+toffy+th
+  if h > maxheight:
+    maxheight = h
     kmaxh = k
 
 print ('Number of glyphs: %d' % len(cmapval))
@@ -95,10 +97,14 @@ def draw_glyph(c):
   
   # Pack image with 4 bits depht
   
-  fbm = struct.pack('<I', offx+toffx) + \
-    struct.pack('<I', offy+toffy) + \
-    struct.pack('<I', aim[:,:,0].shape[1]) + \
-    struct.pack('<I', aim[:,:,0].shape[0])
+  try:
+    fbm = struct.pack('<I', offx+toffx) + \
+      struct.pack('<I', offy+toffy) + \
+      struct.pack('<I', aim[:,:,0].shape[1]) + \
+      struct.pack('<I', aim[:,:,0].shape[0])
+  except:
+    return None
+  
   ms = True
   doublepxsval = 0
   for row in aim[:,:,0]:

@@ -30,15 +30,37 @@ int main(int argc, char * argv[])
   
   CALL(dv, load_font_from_file, "fontsgen/fonts2.baf");
   
+  videoterm * vt0 = CALL(mon0, videoterminal, 0);
+  
+  CALL(mon0, draw_rectangle, 0, 0, 1919, 1079, 0x0000aaaa);
+  
+  sleep(1);
+  
   CALL(mon0, draw_rectangle, 500, 300, 800, 600, 0xff << 8);
   
   sleep(1);
   
-  CALL(mon0, draw_rectangle, 100, 50, 900, 100, 0xaa << 14);
+  CALL(mon0, draw_rectangle, 0, 0, 32, 65, 0xaa << 14);
   
   sleep(1);
   
-  CALL(mon0, draw_rectangle, 200, 500, 400, 300, 0xdd);
+  CALL(mon0, draw_rectangle, 32, 0, 32, 65, 0xff << 14);
+  
+  sleep(1);
+  
+  for (int k=0; k<150; k++)
+  {
+    uint8_t c = (k % 93) + 33;
+    CALL(vt0, putc_and_advance, 1, (char *)(&c));
+  }
+  
+  sleep(2);
+  
+  CALL(vt0, putc_and_advance, 1, "p");
+  
+  sleep(2);
+  
+  CALL(mon0, draw_rectangle, 200, 500, 400, 300, 0x000000dd); /* Blue */
   
   sleep(2);
   

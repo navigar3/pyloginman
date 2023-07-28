@@ -20,6 +20,13 @@ typedef struct
   uint8_t a;
 } color_t;
 
+struct font_metrics_s
+{
+  uint32_t boxwidth;
+  uint32_t boxheight;
+  uint32_t ascent;
+  uint32_t descent;
+};
 
 #ifdef _DRM_DOUBLEBUFF_H_PRIVATE
 
@@ -46,6 +53,31 @@ struct modeset_dev {
 	drmModeCrtc * saved_crtc;
 };
 
+struct vt_init_par_s
+{
+  void * par;
+  void * font;
+  void * fmetr;
+};
+
+struct glyph_metrics_s 
+{
+  uint32_t offx;
+  uint32_t offy;
+  uint32_t gw;
+  uint32_t gh;
+};
+
+#define _rch4(px) ((px & 0x00ff0000) >> 16)
+#define _gch4(px) ((px & 0x0000ff00) >>  8)
+#define _bch4(px) (px & 0x000000ff)
+
+#define _alphacol4h(b, f, a) \
+  ( ( b & 0xff000000 ) | \
+    ( ( ( (_rch4(b) * a + _rch4(f) * (15-a)) >> 4 ) << 16 ) | \
+      ( ( (_gch4(b) * a + _gch4(f) * (15-a)) >> 4 ) <<  8 ) | \
+        ( (_bch4(b) * a + _bch4(f) * (15-a)) >> 4 )  )  )
+
 #endif
 
 
@@ -53,15 +85,23 @@ struct modeset_dev {
 typedef struct 
 {
   int (*init)(void *, void *);
+  
+  int (* putc_and_advance)(void *, uint32_t csize, char * charkey);
+  int (* destroy)(void *);
 
   #ifdef _DRM_DOUBLEBUFF_H_PRIVATE
+  
+  void * __Parent;
   
   uint32_t _rows;
   uint32_t _cols;
   uint32_t _curx;
   uint32_t _cury;
   
-  htables * _font;
+  uint32_t _fc;                /* font color (default: black) */
+  struct font_metrics_s * _fm; /* font metrics. */
+  hashtable * _glyphs;
+  htables * _font;             /* Inherited by drmvideo. */
   
   #endif
   
@@ -127,21 +167,10 @@ struct fonts_list
   
   uint32_t fontID;
   
-  uint32_t boxwidth;
-  uint32_t boxheight;
-  uint32_t ascent;
-  uint32_t descent;
+  struct font_metrics_s fm;
   htables * font;
 }; 
 #endif
-
-struct font_info
-{
-  uint32_t boxwidth;
-  uint32_t boxheight;
-  uint32_t ascent;
-  uint32_t descent;
-};
 
 typedef struct 
 {
@@ -154,7 +183,7 @@ typedef struct
   
   int (* load_font_from_file)(void *, char * font_file_name);
   int (* get_num_of_loaded_fonts)(void *);
-  int (* get_font_info)(void *, uint32_t fontID, struct font_info *);
+  int (* get_font_info)(void *, uint32_t fontID, struct font_metrics_s *);
   
   int (* destroy)(void *);
   
