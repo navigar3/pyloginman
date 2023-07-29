@@ -86,7 +86,9 @@ typedef struct
 {
   int (*init)(void *, void *);
   
-  int (* putc_and_advance)(void *, uint32_t csize, char * charkey);
+  int (* putc_advance_and_sync)(void *, uint32_t do_sync, 
+                                uint32_t csize, char * charkey);
+  int (* sync_term)(void *);
   int (* destroy)(void *);
 
   #ifdef _DRM_DOUBLEBUFF_H_PRIVATE
@@ -115,10 +117,18 @@ typedef struct
 {
   int (*init)(void *, void *);
   
+  int (* is_ready)(void *);
+  int (* is_enabled)(void *);
+  uint32_t (* get_monitor_width)(void *);
+  uint32_t (* get_monitor_height)(void *);
+  
   int (* draw_rectangle)(void *, 
                          uint32_t x0, uint32_t y0,
                          uint32_t rw, uint32_t rh,
                          uint32_t color);
+  
+  int (* sync_monitor)(void *);
+  
   videoterm * (* videoterminal)(void *, uint32_t fontID);
   int (*destroy)(void *);
 
@@ -129,6 +139,9 @@ typedef struct
   bool _enabled;
   bool _ready;
   uint32_t _monID;
+  uint32_t _width;
+  uint32_t _height;
+  uint32_t _stride;
   struct modeset_dev * _dev;
   videoterm * _vt;
   
@@ -144,21 +157,6 @@ typedef struct
 
 newclass_h(monitor)
 /* */
-
-/* drmvideo class */
-struct monitors_list
-{
-  struct monitors_list * next;
-  
-  uint32_t monID;
-  uint32_t ready;
-  uint32_t enabled;
-  
-  uint32_t width;
-	uint32_t height;
-	uint32_t stride;
-	uint32_t size;
-};
 
 #ifdef _DRM_DOUBLEBUFF_H_PRIVATE
 struct fonts_list
@@ -176,7 +174,6 @@ typedef struct
 {
   int (*init)(void *, void *);
   
-  int (* get_drm_monitors_info)(void *, struct monitors_list ** list);
   monitor * (* get_monitor_by_ID)(void *, uint32_t monID);
   int (* setup_monitor)(void *, uint32_t monID);
   int (* enable_monitor)(void *, uint32_t monID);
@@ -204,6 +201,8 @@ typedef struct
   int (* _modeset_prepare)(void *);
   int (* _modeset_find_crtc)(void *, monitor * mon);
   int (* _modeset_cleanup)(void *);
+  
+  int (* _remove_monitor)(void *, uint32_t monID);
   
   #endif
   

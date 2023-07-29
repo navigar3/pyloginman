@@ -30,9 +30,9 @@ thisclass_creator
 
 /* draw 4 bits depth glyph for char key on 
  * terminal and advance cursor. */
-int clsm(putc_and_advance, uint32_t ks, char * key)
+int clsm(putc_advance_and_sync,
+         uint32_t do_sync, uint32_t ks, char * key)
 {
-  int ret;
   struct modeset_buf * buf;
   struct modeset_buf * fbuf;
   uint32_t tapecur = 0;
@@ -48,13 +48,10 @@ int clsm(putc_and_advance, uint32_t ks, char * key)
   /* Search key in .glyphs table */
   struct lookup_res lr;
   if(CALL(this->_glyphs, lookup, ks, key, NULL, &lr))
-    goto putc_and_advance__advance;
+    goto putc_advance_and_sync__advance;
   
   /* Glyph metrics */
   struct glyph_metrics_s * gm = (struct glyph_metrics_s *)lr.content;
-  
-  /* Get drm fd*/
-  int drm_fd = ((drmvideo *)(Parent->__Parent))->_drm_fd;
   
   /* Get glyph map */
   char * px = ((char *)(lr.content)) + sizeof(struct glyph_metrics_s);
@@ -125,20 +122,12 @@ int clsm(putc_and_advance, uint32_t ks, char * key)
     }
   }
   
-  /* Flip buffers */
-  ret = drmModeSetCrtc(drm_fd, 
-                       Parent->_dev->crtc, buf->fb, 0, 0,
-                       &Parent->_dev->conn, 1, &Parent->_dev->mode);
-  if (ret)
-  {
-    fprintf(stderr, "cannot flip CRTC for connector %u (%d): %m\n",
-            Parent->_dev->conn, errno);
-    return -1;
-  }
-  else
-    Parent->_dev->front_buf ^= 1;
+  if (do_sync)
+    /* Flip buffers */
+    if (CALL(this, sync_term))
+      return -1;
 
-putc_and_advance__advance:
+putc_advance_and_sync__advance:
   tapecur = (this->_cols * this->_cury) + this->_curx + 1;
   if (tapecur >= (this->_rows * this->_cols)) tapecur = 0;
   this->_cury = tapecur / this->_cols;
@@ -147,9 +136,18 @@ putc_and_advance__advance:
   return 0;
 }
 
+/* Sync monitor related to this terminal */
+int clsm(sync_term)
+{
+  return CALL(Parent, sync_monitor);
+}
+
 /* destroy object */
 int clsm(destroy)
 {
+  /* Set monitor _vt to NULL */
+  Parent->_vt = NULL;
+  
   free(this);
   
   return 0;
@@ -159,7 +157,8 @@ int clsm(destroy)
 int clsm(init, void * init_params)
 {
   clsmlnk(destroy);
-  clsmlnk(putc_and_advance);
+  clsmlnk(putc_advance_and_sync);
+  clsmlnk(sync_term);
   
   struct vt_init_par_s * ip = (struct vt_init_par_s *)init_params;
   this->__Parent = ip->par;
@@ -223,9 +222,9 @@ videoterm * clsm(videoterminal, uint32_t fontID)
     if (it->fontID == fontID)
       break;
   
-  if (!it->font)
+  if (!it)
   {
-    fprintf(stderr, "Font %d not found!\n");
+    fprintf(stderr, "Font %d not found!\n", fontID);
     return NULL;
   }
   
@@ -233,6 +232,40 @@ videoterm * clsm(videoterminal, uint32_t fontID)
   
   return new(videoterm, &vt_init_p);
   
+}
+
+/* Sync monitor related to this terminal */
+int clsm(sync_monitor)
+{
+  struct modeset_buf * buf;
+  
+  /* Check if monitor is enabled */
+  if (!this->_enabled)
+  {
+    fprintf(stderr, "Cannot draw on disabled monitor!\n");
+    return -1;
+  }
+  
+  /* Get drm fd*/
+  int drm_fd = Parent->_drm_fd;
+  
+  /* Select backward buffer and operate on it. */
+  buf = &(this->_dev->bufs[this->_dev->front_buf ^ 1]);
+  
+  /* Flip buffers */
+  int ret = drmModeSetCrtc(drm_fd, 
+                       this->_dev->crtc, buf->fb, 0, 0,
+                       &this->_dev->conn, 1, &this->_dev->mode);
+  if (ret)
+  {
+    fprintf(stderr, "cannot flip CRTC for connector %u (%d): %m\n",
+            this->_dev->conn, errno);
+    return -1;
+  }
+  else
+    this->_dev->front_buf ^= 1;
+  
+  return 0;
 }
 
 /*
@@ -373,6 +406,8 @@ int clsm(_initialize_monitor, drmModeConnector * conn)
 	 * buffers */
 	memcpy(&(this->_dev->mode), &conn->modes[0], 
          sizeof(this->_dev->mode));
+  this->_width = conn->modes[0].hdisplay;
+  this->_height = conn->modes[0].vdisplay;
 	this->_dev->bufs[0].width = conn->modes[0].hdisplay;
 	this->_dev->bufs[0].height = conn->modes[0].vdisplay;
 	this->_dev->bufs[1].width = conn->modes[0].hdisplay;
@@ -387,8 +422,11 @@ int clsm(_initialize_monitor, drmModeConnector * conn)
   return 0;
 }
 
+/* destroy object */
 int clsm(destroy)
 {
+  
+  CALL(Parent, _remove_monitor, this->_monID);
   
   /* restore saved CRTC configuration */
   if (this->_enabled)
@@ -492,14 +530,43 @@ int clsm(draw_rectangle, uint32_t x0, uint32_t y0,
   return 0;
 }
 
+/* is monitor ready ? */
+int clsm(is_ready)
+{
+  return (this->_ready) ? 1 : 0;
+}
+
+/* is monitor enabled ? */
+int clsm(is_enabled)
+{
+  return (this->_enabled) ? 1 : 0;
+}
+
+/* width */
+uint32_t clsm(get_monitor_width)
+{
+  return this->_width;
+}
+
+/* height */
+uint32_t clsm(get_monitor_height)
+{
+  return this->_height;
+}
+
 /* Initialize object */
 int clsm(init, void * init_params)
 {
   clsmlnk(_initialize_monitor);
   clsmlnk(_modeset_create_fbs);
   clsmlnk(_modeset_destroy_fbs);
+  clsmlnk(is_ready);
+  clsmlnk(is_enabled);
+  clsmlnk(get_monitor_width);
+  clsmlnk(get_monitor_height);
   clsmlnk(videoterminal);
   clsmlnk(draw_rectangle);
+  clsmlnk(sync_monitor);
   clsmlnk(destroy);
   
   return 0;
@@ -627,6 +694,21 @@ int clsm(enable_monitor, uint32_t monID)
   }
   
   mon->_enabled = true;
+  
+  return 0;
+}
+
+/* Destroy monitor */
+int clsm(_remove_monitor, uint32_t monID)
+{
+  if (monID >= this->_num_of_monitors)
+  {
+    fprintf(stderr, "monitor monID is out of range!\n");
+    return -1;
+  }
+  
+  /* Set pointer to NULL */
+  *(this->_monitors+monID) = NULL;
   
   return 0;
 }
@@ -944,6 +1026,7 @@ int clsm(init, void * init_params)
   clsmlnk(_modeset_prepare);
   clsmlnk(_modeset_find_crtc);
   clsmlnk(_modeset_cleanup);
+  clsmlnk(_remove_monitor);
   clsmlnk(setup_monitor);
   clsmlnk(enable_monitor);
   clsmlnk(get_monitor_by_ID);
