@@ -28,6 +28,9 @@ drm-doublebuff.o: drm-doublebuff.c
 
 drmobjtest: drmobjtest.o drm-doublebuff.o tools/hashtable.o
 	$(CC) -o $@ $^ $(LDFLAGS)
+	
+drm_handler.so: drm-doublebuff.o tools/hashtable.o
+	$(CC) -shared -o $@ $^ $(LDFLAGS)
 
 clean:
 	rm -f *.o drm-splash4slack

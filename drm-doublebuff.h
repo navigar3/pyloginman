@@ -174,6 +174,7 @@ typedef struct
 {
   int (*init)(void *, void *);
   
+  uint32_t (* get_num_of_monitors)(void *);
   monitor * (* get_monitor_by_ID)(void *, uint32_t monID);
   int (* setup_monitor)(void *, uint32_t monID);
   int (* enable_monitor)(void *, uint32_t monID);

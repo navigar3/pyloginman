@@ -19,6 +19,13 @@
 #include "drm-doublebuff.h"
 
 
+/* Helper for python binding */
+drmvideo * new_drmvideo(char * videocard)
+{
+  return new(drmvideo, videocard);
+}
+
+
 /*************************************/
 /* Implement videoterm class methods */
 #ifndef _CLASS_NAME
@@ -1019,6 +1026,12 @@ int clsm(load_font_from_file, char * font_file_name)
   return 0;
 }
 
+/* Get num of monitors*/
+uint32_t clsm(get_num_of_monitors)
+{
+  return this->_num_of_monitors;
+}
+
 /* initialize object */
 int clsm(init, void * init_params)
 {
@@ -1027,6 +1040,7 @@ int clsm(init, void * init_params)
   clsmlnk(_modeset_find_crtc);
   clsmlnk(_modeset_cleanup);
   clsmlnk(_remove_monitor);
+  clsmlnk(get_num_of_monitors);
   clsmlnk(setup_monitor);
   clsmlnk(enable_monitor);
   clsmlnk(get_monitor_by_ID);
