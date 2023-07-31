@@ -35,15 +35,53 @@ drmvideo * new_drmvideo(char * videocard)
 
 thisclass_creator
 
+uint32_t clsm(get_curx)
+{
+  return this->_curx;
+}
+
+uint32_t clsm(get_cury)
+{
+  return this->_cury;
+}
+
+uint32_t clsm(get_nrows)
+{
+  return this->_rows;
+}
+
+uint32_t clsm(get_ncols)
+{
+  return this->_cols;
+}
+
+int clsm(move_cur, uint32_t x, uint32_t y)
+{
+  if ((x>=this->_cols) || (y>=this->_rows))
+    return -1;
+  
+  this->_curx = x;
+  this->_cury = y;
+  
+  return 0;
+}
+
+int clsm(set_fontcolor, uint32_t fcolor)
+{
+  this->_fc = fcolor & 0x00ffffff;
+  
+  return 0;
+}
+
 /* draw 4 bits depth glyph for char key on 
  * terminal and advance cursor. */
 int clsm(putc_advance_and_sync,
-         uint32_t do_sync, uint32_t ks, char * key)
+         uint32_t sync_now, uint32_t ks, char * key)
 {
-  struct modeset_buf * buf;
-  struct modeset_buf * fbuf;
+  struct modeset_buf * buf, * fbuf, * bbuf;
   uint32_t tapecur = 0;
   uint32_t pxal;
+  bool front_buf_tile_fullcopy = false;
   
   /* Check if monitor is enabled */
   if (!(Parent->_enabled))
@@ -52,16 +90,15 @@ int clsm(putc_advance_and_sync,
     return -1;
   }
   
-  /* Search key in .glyphs table */
-  struct lookup_res lr;
-  if(CALL(this->_glyphs, lookup, ks, key, NULL, &lr))
-    goto putc_advance_and_sync__advance;
+  unsigned int x0;
+  unsigned int y0;
+  unsigned int xmax;
+  unsigned int ymax;
+  unsigned int off;
   
-  /* Glyph metrics */
-  struct glyph_metrics_s * gm = (struct glyph_metrics_s *)lr.content;
-  
-  /* Get glyph map */
-  char * px = ((char *)(lr.content)) + sizeof(struct glyph_metrics_s);
+  /* Tile status struct */
+  struct vt_tile_status_s * ts = 
+    this->_sb + this->_cury * this->_cols + this->_curx;
   
   /* Select backward buffer and operate on it. */
   buf = &(Parent->_dev->bufs[Parent->_dev->front_buf ^ 1]);
@@ -69,13 +106,51 @@ int clsm(putc_advance_and_sync,
   /* Get front buffer */
   fbuf = &(Parent->_dev->bufs[Parent->_dev->front_buf]);
   
+  /* Get background buffer */
+  bbuf = &(Parent->_dev->bufs[2]);
+  
+  /* Clear tile if needed */
+  if (ts->written)
+  {
+    x0 = this->_fm->boxwidth * this->_curx;
+    y0 = this->_fm->boxheight * this->_cury;
+    xmax = x0 + this->_fm->boxwidth;
+    ymax = y0 + this->_fm->boxheight;
+    
+    for (unsigned int j = y0; j < ymax; ++j)
+    {
+      for (unsigned int k = x0; k < xmax; ++k) 
+      {
+        off = buf->stride * j + k * 4;
+        
+        *(uint32_t*)&buf->map[off] = *(uint32_t*)&bbuf->map[off];
+      }
+    }
+    
+    front_buf_tile_fullcopy = true; /* Copy full tile on front buffer */
+    ts->written = false;            /* Tile is clear. */
+  }
+  
+  /* Search key in .glyphs table */
+  struct lookup_res lr;
+  if(CALL(this->_glyphs, lookup, ks, key, NULL, &lr))
+  {
+    front_buf_tile_fullcopy = true;
+    /* Glyph not fonud! */
+    goto putc_advance_and_sync__advance;
+  }
+  
+  /* Glyph metrics */
+  struct glyph_metrics_s * gm = (struct glyph_metrics_s *)lr.content;
+  
+  /* Get glyph map */
+  char * px = ((char *)(lr.content)) + sizeof(struct glyph_metrics_s);
+  
   /* Draw glyph on backward buffer */
-  unsigned int x0 = this->_fm->boxwidth * this->_curx + gm->offx;
-  unsigned int y0 = this->_fm->boxheight * this->_cury + gm->offy;
-  unsigned int xmax = x0 + gm->gw;
-  unsigned int ymax = y0 + gm->gh;
-  unsigned int off;
-  //fprintf(stderr, "x0=%d, y0=%d, gw=%d, gh=%d\n", x0, y0, gm->gw, gm->gh);
+  x0 = this->_fm->boxwidth * this->_curx + gm->offx;
+  y0 = this->_fm->boxheight * this->_cury + gm->offy;
+  xmax = x0 + gm->gw;
+  ymax = y0 + gm->gh;
   char sw = 0;
   
   for (unsigned int j = y0; j < ymax; ++j)
@@ -89,52 +164,79 @@ int clsm(putc_advance_and_sync,
         px++;
         sw = 0;
         if (pxal == 0) /* pixel opacity 1 */
-        {
           *(uint32_t*)&buf->map[off] = 
             (*(uint32_t*)&buf->map[off] & 0xff000000 ) | this->_fc;
-          *(uint32_t*)&fbuf->map[off] = *(uint32_t*)&buf->map[off];
-        }
         else if (pxal == 15) /* pixel opacity 0 */
           continue;
         else
-        {
-          *(uint32_t*)&buf->map[off] = 
-            _alphacol4h(*(uint32_t*)&buf->map[off], this->_fc, pxal); 
-          
-          /* Update front buffer now */
-          *(uint32_t*)&fbuf->map[off] = *(uint32_t*)&buf->map[off];
-        }
+          *(uint32_t*)&buf->map[off] =  
+            _alphacol4h(*(uint32_t*)&buf->map[off], this->_fc, pxal);
       }
       else
       {
         pxal = (uint32_t)((*px & 0xf0) >> 4);
         sw = 1;
         if (pxal == 0) /* pixel opacity 1 */
-        {
-          *(uint32_t*)&buf->map[off] = 
+          *(uint32_t*)&buf->map[off] =
             (*(uint32_t*)&buf->map[off] & 0xff000000 ) | this->_fc;
-          *(uint32_t*)&fbuf->map[off] = *(uint32_t*)&buf->map[off];
-        }
         else if (pxal == 15) /* pixel opacity 0 */
           continue;
         else
-        {
-          *(uint32_t*)&buf->map[off] = 
+          *(uint32_t*)&buf->map[off] =  
             _alphacol4h(*(uint32_t*)&buf->map[off], this->_fc, pxal);
-          
-          /* Update front buffer now */
-          *(uint32_t*)&fbuf->map[off] = *(uint32_t*)&buf->map[off];
-        }
       }
     }
   }
   
-  if (do_sync)
-    /* Flip buffers */
-    if (CALL(this, sync_term))
-      return -1;
+  ts->written = true;
 
 putc_advance_and_sync__advance:
+  if (sync_now)
+  {
+    /* Flip buffers and sync changes. */
+    if (CALL(this, sync_term))
+      return -1;
+    
+    /* Update tile written now */
+    if (front_buf_tile_fullcopy)
+    {
+      /* Redraw full tile on backward buffer, now flipped. */
+      x0 = this->_fm->boxwidth * this->_curx;
+      y0 = this->_fm->boxheight * this->_cury;
+      xmax = x0 + this->_fm->boxwidth;
+      ymax = y0 + this->_fm->boxheight;
+    }
+    else
+    {
+      /* Redraw only tile written pixels on backward buffer, 
+       *  now flipped. */
+      x0 = this->_fm->boxwidth * this->_curx + gm->offx;
+      y0 = this->_fm->boxheight * this->_cury + gm->offy;
+      xmax = x0 + gm->gw;
+      ymax = y0 + gm->gh;
+    }
+    
+    /* Now redraw last tile on backward buffer, now flipped. */
+    for (unsigned int j = y0; j < ymax; ++j)
+    {
+      for (unsigned int k = x0; k < xmax; ++k) 
+      {
+        off = buf->stride * j + k * 4;
+        
+        *(uint32_t*)&fbuf->map[off] = *(uint32_t*)&buf->map[off];
+      }
+    }
+  }
+
+  else
+  {
+    /* Dont sync. Mark this tile as to update and 
+     * set _need_update true */
+     
+    ts->need_update = true;
+    this->_need_update = true;
+  }
+
   tapecur = (this->_cols * this->_cury) + this->_curx + 1;
   if (tapecur >= (this->_rows * this->_cols)) tapecur = 0;
   this->_cury = tapecur / this->_cols;
@@ -143,10 +245,60 @@ putc_advance_and_sync__advance:
   return 0;
 }
 
+
 /* Sync monitor related to this terminal */
 int clsm(sync_term)
 {
-  return CALL(Parent, sync_monitor);
+  
+  /* Select backward buffer and operate on it. */
+  struct modeset_buf * buf = 
+    &(Parent->_dev->bufs[Parent->_dev->front_buf ^ 1]);
+  
+  /* Get front buffer */
+  struct modeset_buf * 
+    fbuf = &(Parent->_dev->bufs[Parent->_dev->front_buf]);
+  
+  /* Flip buffers */
+  int ret = CALL(Parent, sync_monitor);
+  
+  if (ret)
+    return ret;
+  
+  /* Update all tiles written before if needed. */
+  if (this->_need_update)
+  {
+    struct vt_tile_status_s * vts;
+    
+    for (unsigned int r = 0; r<this->_rows; r++)
+    {
+      for (unsigned int c = 0; c<this->_cols; c++)
+      {
+        vts = this->_sb + r * this->_cols + c;
+        if (vts->need_update == false)
+          continue;
+          
+        unsigned int x0 = this->_fm->boxwidth * c;
+        unsigned int y0 = this->_fm->boxheight * r;
+        unsigned int xmax = x0 + this->_fm->boxwidth;
+        unsigned int ymax = y0 + this->_fm->boxheight;
+        unsigned int off;
+        
+        for (unsigned int j = y0; j < ymax; ++j)
+        {
+          for (unsigned int k = x0; k < xmax; ++k) 
+          {
+            off = buf->stride * j + k * 4;
+            
+            *(uint32_t*)&fbuf->map[off] = *(uint32_t*)&buf->map[off];
+          }
+        }
+      }
+    }
+    
+    this->_need_update = false;
+  }
+  
+  return ret;
 }
 
 /* destroy object */
@@ -154,6 +306,14 @@ int clsm(destroy)
 {
   /* Set monitor _vt to NULL */
   Parent->_vt = NULL;
+  
+  /* Free tiles status */
+  if (this->_sb)
+    free(this->_sb);
+  
+  /* Free symbols table */
+  if (this->_syms)
+    free(this->_syms);
   
   free(this);
   
@@ -166,6 +326,12 @@ int clsm(init, void * init_params)
   clsmlnk(destroy);
   clsmlnk(putc_advance_and_sync);
   clsmlnk(sync_term);
+  clsmlnk(get_nrows);
+  clsmlnk(get_ncols);
+  clsmlnk(get_curx);
+  clsmlnk(get_cury);
+  clsmlnk(move_cur);
+  clsmlnk(set_fontcolor);
   
   struct vt_init_par_s * ip = (struct vt_init_par_s *)init_params;
   this->__Parent = ip->par;
@@ -184,6 +350,10 @@ int clsm(init, void * init_params)
   
   this->_rows = Parent->_dev->bufs[0].height / this->_fm->boxheight;
   this->_cols = Parent->_dev->bufs[0].width / this->_fm->boxwidth;
+  
+  this->_sb = hcalloc(this->_rows * this->_cols, 
+                      sizeof(struct vt_tile_status_s));
+    
   
   fprintf(stderr, "New videoterminal for monitor %d\n"
                   "  terminal rows = %d\n"
@@ -422,6 +592,7 @@ int clsm(_initialize_monitor, drmModeConnector * conn)
   this->_dev->bufs[2].width = conn->modes[0].hdisplay;
 	this->_dev->bufs[2].height = conn->modes[0].vdisplay;
   this->_dev->conn = conn->connector_id;
+  
 	fprintf(stderr, "mode for connector %u is %ux%u\n",
 		conn->connector_id, 
     this->_dev->bufs[0].width, this->_dev->bufs[0].height);

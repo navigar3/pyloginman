@@ -1,5 +1,43 @@
 from ctypes import *
 
+class videoterm:
+  def __init__(self, libh, vtobj, fun_prefix='_videoterm_'):
+    self._lv = libh
+    self._vt = vtobj
+    
+    self._fpre = fun_prefix
+    
+    self.__putc_advance_and_sync = \
+      getattr(self._lv, self._fpre + 'putc_advance_and_sync')
+    
+    self.__get_nrows = \
+      getattr(self._lv, self._fpre + 'get_nrows')
+    
+    self.__get_ncols = \
+      getattr(self._lv, self._fpre + 'get_ncols')
+    
+    self.__get_curx = \
+      getattr(self._lv, self._fpre + 'get_curx')
+      
+    self.__get_cury = \
+      getattr(self._lv, self._fpre + 'get_cury')
+    
+    self.__move_cur = \
+      getattr(self._lv, self._fpre + 'move_cur')
+    
+    self.__set_fontcolor = \
+      getattr(self._lv, self._fpre + 'set_fontcolor')
+    
+  def vputc(self, c, sync=1):
+    self.__putc_advance_and_sync(self._vt, sync, len(c), c)
+  
+  def move_cur(self, x, y):
+    self.__move_cur(self._vt, x, y)
+  
+  def set_fontcolor(self, color):
+    self.__set_fontcolor(self._vt, color)
+    
+
 class monitor:
   def __init__(self, libh, mon, mnum, fun_prefix='_monitor_'):
     self._lv = libh
@@ -18,12 +56,24 @@ class monitor:
     self.__draw_rectangle = \
       getattr(self._lv, self._fpre + 'draw_rectangle')
     
+    self.__videoterminal = \
+      getattr(self._lv, self._fpre + 'videoterminal')
+    
     print('PyHandler: monitor %d is %d x %d' % 
       (self._monID, self._w, self._h))
   
   def draw_rectangle(self, x0, y0, rw, rh, color):
     return self.__draw_rectangle(self._mon, x0, y0, rw, rh, color)
+  
+  def vterm(self, fontID=0):
+    _vtobj = c_void_p(self.__videoterminal(self._mon, fontID))
+    if _vtobj.value == None:
+        print ("PyHandler: Error starting vterm on monitor %d" % self._monID)
+        return None
     
+    self._vt = videoterm(self._lv, _vtobj)
+    
+    return self._vt
     
 
 class videodev:
@@ -75,6 +125,9 @@ class videodev:
     
     self.__enable_monitor = \
       getattr(self._lv, self._fpre + 'enable_monitor')
+      
+    self.__load_font_from_file = \
+      getattr(self._lv, self._fpre + 'load_font_from_file')
   
   
   def setup_monitor(self, monID):
@@ -85,6 +138,9 @@ class videodev:
   
   def get_monitor_by_ID(self, monID):
     return self._mons[monID]
+  
+  def load_font_from_file(self, font_path):
+    self.__load_font_from_file(self._vd, font_path.encode())
     
   def quit_videodev(self):
     self.__destroy(self._vd)

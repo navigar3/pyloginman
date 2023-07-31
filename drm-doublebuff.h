@@ -68,6 +68,17 @@ struct glyph_metrics_s
   uint32_t gh;
 };
 
+struct vt_tile_status_s
+{
+  bool written;
+  bool need_update;
+};
+
+struct vt_sym_status_s
+{
+  uint8_t sym[5];
+};
+
 #define _rch4(px) ((px & 0x00ff0000) >> 16)
 #define _gch4(px) ((px & 0x0000ff00) >>  8)
 #define _bch4(px) (px & 0x000000ff)
@@ -88,6 +99,12 @@ typedef struct
   
   int (* putc_advance_and_sync)(void *, uint32_t do_sync, 
                                 uint32_t csize, char * charkey);
+  int (* move_cur)(void *, uint32_t x, uint32_t y);
+  uint32_t (* get_curx)(void *);
+  uint32_t (* get_cury)(void *);
+  uint32_t (* get_nrows)(void *);
+  uint32_t (* get_ncols)(void *);
+  int (* set_fontcolor)(void *, uint32_t fcolor);
   int (* sync_term)(void *);
   int (* destroy)(void *);
 
@@ -104,6 +121,11 @@ typedef struct
   struct font_metrics_s * _fm; /* font metrics. */
   hashtable * _glyphs;
   htables * _font;             /* Inherited by drmvideo. */
+  
+  bool _need_update;
+  struct vt_tile_status_s * _sb;
+  bool _vt_sym_buffer_enabled;
+  struct vt_sym_status_s * _syms;
   
   #endif
   
