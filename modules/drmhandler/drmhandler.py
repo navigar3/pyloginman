@@ -1,5 +1,7 @@
 from ctypes import *
 
+import os
+
 class videoterm:
   def __init__(self, libh, vtobj, fun_prefix='_videoterm_'):
     self._lv = libh
@@ -28,8 +30,13 @@ class videoterm:
     self.__set_fontcolor = \
       getattr(self._lv, self._fpre + 'set_fontcolor')
     
-  def vputc(self, c, sync=1):
-    self.__putc_advance_and_sync(self._vt, sync, len(c), c)
+  def vputc(self, c, sync=1, lc=None):
+    if lc is not None:
+      _lc = lc
+    else:
+      _lc = len(c)
+    
+    self.__putc_advance_and_sync(self._vt, sync, _lc, c)
   
   def move_cur(self, x, y):
     self.__move_cur(self._vt, x, y)
@@ -81,7 +88,10 @@ class videodev:
                libname='drm_handler.so', libpath='', 
                fun_prefix='_drmvideo_'):
     
-    fullpath = libpath + libname
+    if '__file__' in globals():
+      libpath = os.path.dirname(__file__)
+    
+    fullpath = libpath + '/' + libname
     
     self._card_devname = card_devname
     
@@ -125,10 +135,22 @@ class videodev:
     
     self.__enable_monitor = \
       getattr(self._lv, self._fpre + 'enable_monitor')
+    
+    self.__redraw = \
+      getattr(self._lv, self._fpre + 'redraw')
       
     self.__load_font_from_file = \
       getattr(self._lv, self._fpre + 'load_font_from_file')
+    
+    self.__set_or_drop_master_mode = \
+      getattr(self._lv, self._fpre + 'set_or_drop_master_mode')
+    
   
+  def set_or_drop_master_mode(self, vdmmode):
+    return self.__set_or_drop_master_mode(self._vd, vdmmode)
+  
+  def redraw(self):
+    self.__redraw(self._vd)
   
   def setup_monitor(self, monID):
     return self.__setup_monitor(self._vd, monID)
@@ -144,4 +166,3 @@ class videodev:
     
   def quit_videodev(self):
     self.__destroy(self._vd)
-  

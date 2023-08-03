@@ -445,6 +445,28 @@ int clsm(sync_monitor)
   return 0;
 }
 
+int clsm(_redraw_fb)
+{
+  /* Get drm fd*/
+  int drm_fd = Parent->_drm_fd;
+  
+  /* Select front buffer. */
+  struct modeset_buf * buf = &(this->_dev->bufs[this->_dev->front_buf]);
+  
+  /* call SetCrtc on front buffer */
+  int ret = drmModeSetCrtc(drm_fd, 
+                       this->_dev->crtc, buf->fb, 0, 0,
+                       &this->_dev->conn, 1, &this->_dev->mode);
+  if (ret)
+  {
+    fprintf(stderr, "cannot flip CRTC for connector %u (%d): %m\n",
+            this->_dev->conn, errno);
+    return -1;
+  }
+  
+  return 0;
+}
+
 /*
  * modeset_create_fb() is mostly the same as before. Buf instead of writing the
  * fields of a modeset_dev, we now require a buffer pointer passed as @buf.
@@ -738,6 +760,7 @@ int clsm(init, void * init_params)
   clsmlnk(_initialize_monitor);
   clsmlnk(_modeset_create_fbs);
   clsmlnk(_modeset_destroy_fbs);
+  clsmlnk(_redraw_fb);
   clsmlnk(is_ready);
   clsmlnk(is_enabled);
   clsmlnk(get_monitor_width);
@@ -1203,6 +1226,28 @@ uint32_t clsm(get_num_of_monitors)
   return this->_num_of_monitors;
 }
 
+/* Set/Drop Master Mode */
+int clsm(set_or_drop_master_mode, uint32_t setdrop)
+{
+  if (setdrop)
+    /* Set Master Mode */
+    return drmSetMaster(this->_drm_fd);
+  else
+    /* Drop Master Mode */
+    return drmDropMaster(this->_drm_fd);
+}
+
+/* Redraw all active monitors */
+int clsm(redraw)
+{
+  for (int i=0; i<this->_num_of_monitors; i++)
+    if (*(this->_monitors+i))
+      if ((*(this->_monitors+i))->_enabled)
+        CALL((*(this->_monitors+i)), _redraw_fb);
+  
+  return 0;
+}
+
 /* initialize object */
 int clsm(init, void * init_params)
 {
@@ -1211,10 +1256,12 @@ int clsm(init, void * init_params)
   clsmlnk(_modeset_find_crtc);
   clsmlnk(_modeset_cleanup);
   clsmlnk(_remove_monitor);
+  clsmlnk(set_or_drop_master_mode);
   clsmlnk(get_num_of_monitors);
   clsmlnk(setup_monitor);
   clsmlnk(enable_monitor);
   clsmlnk(get_monitor_by_ID);
+  clsmlnk(redraw);
   clsmlnk(load_font_from_file);
   clsmlnk(destroy);
   

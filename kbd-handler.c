@@ -9,8 +9,11 @@
 #include <stdlib.h>
 
 
-int drmDropMaster(int);
-int drmSetMaster(int);
+//int drmDropMaster(int);
+//int drmSetMaster(int);
+
+int (* video_set_master_mode)() = NULL;
+int (* video_drop_master_mode)() = NULL;
 
 
 struct vt_mode orig_vtmode;
@@ -105,15 +108,15 @@ int blocking_read_multibytes_from_term(char * buff)
 
 
 /* Handle Virtual Terminal switch manually. 
- *  int drm_fd: Direct Rendering Manager file descriptor;
  *  int to_tty: ttynumber to activate. */
-void switch_tty_and_wait(int drm_fd, int to_tty)
+void switch_tty_and_wait(int to_tty)
 {
   struct vt_mode vtmode = orig_vtmode;
   
   /* First, drop Direct Rendering Manager Master Mode in order
    * to allow other process to load their FrameBuffers. */
-  drmDropMaster(drm_fd);
+  if (video_drop_master_mode)
+    video_drop_master_mode();
   
   /* Restore VT Auto switch handler. */
   vtmode.mode = VT_AUTO;
@@ -132,10 +135,14 @@ void switch_tty_and_wait(int drm_fd, int to_tty)
     goto own_tty;
   }
   
+  //fprintf(stderr, "Launching ioctl() VT_WAITACTIVE 1 \n");
+  
   if (ioctl(STDIN_FILENO, VT_WAITACTIVE, to_tty) == -1)
   {
     fprintf(stderr, "ioctl() VT_WAITACTIVE %d failed!\n", to_tty);
   }
+  
+  //fprintf(stderr, "Launched ioctl() VT_WAITACTIVE 1 \n");
   
 
 own_tty:
@@ -148,6 +155,8 @@ own_tty:
     exit(1);
   }
   
+  //fprintf(stderr, "Launching ioctl() VT_WAITACTIVE 2 \n");
+  
   /* Wait until this tty become active again. */
   if (ioctl(STDIN_FILENO, VT_WAITACTIVE, curr_tty_num) == -1)
   {
@@ -155,6 +164,9 @@ own_tty:
     exit(1);
   }
   
+  //fprintf(stderr, "Launched ioctl() VT_WAITACTIVE 2 \n");
+  
   /* Set DRM Master Mode in order to allow rendering operations. */
-  drmSetMaster(drm_fd);
+  if (video_set_master_mode)
+    video_set_master_mode();
 }
