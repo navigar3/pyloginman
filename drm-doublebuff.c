@@ -55,13 +55,45 @@ uint32_t clsm(get_ncols)
   return this->_cols;
 }
 
-int clsm(move_cur, uint32_t x, uint32_t y)
+int clsm(move_cur, int32_t x, int32_t y)
 {
-  if ((x>=this->_cols) || (y>=this->_rows))
-    return -1;
+  if ((x>=0) && (x<this->_cols))
+    this->_curx = x;
+    
+  if ((y>=0) && (y<this->_rows))
+    this->_cury = y;
   
-  this->_curx = x;
-  this->_cury = y;
+  return 0;
+}
+
+int clsm(move_cur_rel, int32_t x, int32_t y)
+{
+  int32_t newx = this->_curx + x;
+  if ((newx>=0) && (newx<this->_cols))
+    this->_curx = newx;
+  
+  int32_t newy = this->_cury + y;
+  if ((newy>=0) && (newy<this->_rows))
+    this->_cury = newy;
+  
+  return 0;
+}
+
+int clsm(move_cur_prop, int32_t x, int32_t y)
+{
+  if (x>=0)
+  {
+    int32_t newx = (x * this->_cols) / 1000;
+    if ((newx>=0) && (newx<this->_cols))
+      this->_curx = newx;
+  }
+  
+  if (y>=0)
+  {
+    int32_t newy = (y * this->_rows) / 1000;
+    if ((newy>=0) && (newy<this->_rows))
+      this->_cury = newy;
+  }
   
   return 0;
 }
@@ -76,7 +108,7 @@ int clsm(set_fontcolor, uint32_t fcolor)
 /* draw 4 bits depth glyph for char key on 
  * terminal and advance cursor. */
 int clsm(putc_advance_and_sync,
-         uint32_t sync_now, uint32_t ks, char * key)
+         uint32_t sync_now, uint32_t advance, uint32_t ks, char * key)
 {
   struct modeset_buf * buf, * fbuf, * bbuf;
   uint32_t tapecur = 0;
@@ -236,15 +268,113 @@ putc_advance_and_sync__advance:
     ts->need_update = true;
     this->_need_update = true;
   }
-
-  tapecur = (this->_cols * this->_cury) + this->_curx + 1;
-  if (tapecur >= (this->_rows * this->_cols)) tapecur = 0;
-  this->_cury = tapecur / this->_cols;
-  this->_curx = tapecur % this->_cols;
-
+  
+  if (advance)
+  {
+    tapecur = (this->_cols * this->_cury) + this->_curx + 1;
+    if (tapecur >= (this->_rows * this->_cols)) tapecur = 0;
+    this->_cury = tapecur / this->_cols;
+    this->_curx = tapecur % this->_cols;
+  }
+  
   return 0;
 }
 
+
+/* Clear current tile. */
+int clsm(clear_pos, uint32_t sync_now)
+{
+  struct modeset_buf * buf, * fbuf, * bbuf;
+  bool set_clear_tile = false;
+  
+  /* Check if monitor is enabled */
+  if (!(Parent->_enabled))
+  {
+    fprintf(stderr, "Cannot draw on disabled monitor!\n");
+    return -1;
+  }
+  
+  unsigned int x0;
+  unsigned int y0;
+  unsigned int xmax;
+  unsigned int ymax;
+  unsigned int off;
+  
+  /* Tile status struct */
+  struct vt_tile_status_s * ts = 
+    this->_sb + this->_cury * this->_cols + this->_curx;
+  
+  /* Select backward buffer and operate on it. */
+  buf = &(Parent->_dev->bufs[Parent->_dev->front_buf ^ 1]);
+  
+  /* Get front buffer */
+  fbuf = &(Parent->_dev->bufs[Parent->_dev->front_buf]);
+  
+  /* Get background buffer */
+  bbuf = &(Parent->_dev->bufs[2]);
+  
+  /* Clear tile if needed */
+  if (ts->written)
+  {
+    x0 = this->_fm->boxwidth * this->_curx;
+    y0 = this->_fm->boxheight * this->_cury;
+    xmax = x0 + this->_fm->boxwidth;
+    ymax = y0 + this->_fm->boxheight;
+    
+    for (unsigned int j = y0; j < ymax; ++j)
+    {
+      for (unsigned int k = x0; k < xmax; ++k) 
+      {
+        off = buf->stride * j + k * 4;
+        
+        *(uint32_t*)&buf->map[off] = *(uint32_t*)&bbuf->map[off];
+      }
+    }
+    
+    set_clear_tile = true; /* Copy full tile on front buffer */
+    ts->written = false;   /* Tile is clear. */
+  }
+  
+  if (sync_now)
+  {
+    /* Flip buffers and sync changes. */
+    if (CALL(this, sync_term))
+      return -1;
+    
+    /* Update tile written now */
+    if (set_clear_tile)
+    {
+      /* Redraw full tile on backward buffer, now flipped. */
+      x0 = this->_fm->boxwidth * this->_curx;
+      y0 = this->_fm->boxheight * this->_cury;
+      xmax = x0 + this->_fm->boxwidth;
+      ymax = y0 + this->_fm->boxheight;
+    
+    
+      /* Now redraw last tile on backward buffer, now flipped. */
+      for (unsigned int j = y0; j < ymax; ++j)
+      {
+        for (unsigned int k = x0; k < xmax; ++k) 
+        {
+          off = buf->stride * j + k * 4;
+          
+          *(uint32_t*)&fbuf->map[off] = *(uint32_t*)&bbuf->map[off];
+        }
+      }
+    }
+  }
+
+  else if (set_clear_tile)
+  {
+    /* Dont sync. Mark this tile as to update and 
+     * set _need_update true */
+     
+    ts->need_update = true;
+    this->_need_update = true;
+  }
+  
+  return 0;
+}
 
 /* Sync monitor related to this terminal */
 int clsm(sync_term)
@@ -325,12 +455,15 @@ int clsm(init, void * init_params)
 {
   clsmlnk(destroy);
   clsmlnk(putc_advance_and_sync);
+  clsmlnk(clear_pos);
   clsmlnk(sync_term);
   clsmlnk(get_nrows);
   clsmlnk(get_ncols);
   clsmlnk(get_curx);
   clsmlnk(get_cury);
   clsmlnk(move_cur);
+  clsmlnk(move_cur_rel);
+  clsmlnk(move_cur_prop);
   clsmlnk(set_fontcolor);
   
   struct vt_init_par_s * ip = (struct vt_init_par_s *)init_params;
@@ -407,7 +540,9 @@ videoterm * clsm(videoterminal, uint32_t fontID)
   
   struct vt_init_par_s vt_init_p = {this, it->font, &it->fm};
   
-  return new(videoterm, &vt_init_p);
+  this->_vt = new(videoterm, &vt_init_p);
+  
+  return this->_vt;
   
 }
 
@@ -1248,6 +1383,133 @@ int clsm(redraw)
   return 0;
 }
 
+/* Move cursors on all available terminals */
+int clsm(move_cur, int32_t x, int32_t y)
+{
+  for (unsigned int i=0; i<this->_num_of_monitors; i++)
+    if (*(this->_monitors+i))
+      if (((*(this->_monitors+i))->_enabled) && 
+          ((*(this->_monitors+i))->_vt))
+        CALL(((*(this->_monitors+i))->_vt), move_cur, x, y);
+  
+  return 0;
+}
+
+/* Move cursors (relative motion) on all available terminals */
+int clsm(move_cur_rel, int32_t x, int32_t y)
+{
+  for (unsigned int i=0; i<this->_num_of_monitors; i++)
+    if (*(this->_monitors+i))
+      if (((*(this->_monitors+i))->_enabled) && 
+          ((*(this->_monitors+i))->_vt))
+        CALL(((*(this->_monitors+i))->_vt), move_cur_rel, x, y);
+  
+  return 0;
+}
+
+/* Move cursors (prop pos) on all available terminals */
+int clsm(move_cur_prop, int32_t x, int32_t y)
+{
+  for (unsigned int i=0; i<this->_num_of_monitors; i++)
+    if (*(this->_monitors+i))
+      if (((*(this->_monitors+i))->_enabled) && 
+          ((*(this->_monitors+i))->_vt))
+        CALL(((*(this->_monitors+i))->_vt), move_cur_prop, x, y);
+  
+  return 0;
+}
+
+/* Set font color on all available terminals */
+int clsm(set_vts_fontcolor, uint32_t fcolor)
+{
+  for (unsigned int i=0; i<this->_num_of_monitors; i++)
+    if (*(this->_monitors+i))
+      if (((*(this->_monitors+i))->_enabled) && 
+          ((*(this->_monitors+i))->_vt))
+        CALL(((*(this->_monitors+i))->_vt), 
+             set_fontcolor, fcolor);
+  
+  return 0;
+}
+
+/* Put char on all available terminals */
+int clsm(vputc, uint32_t do_sync, uint32_t advance, 
+                uint32_t csize, char * charkey)
+{
+  for (unsigned int i=0; i<this->_num_of_monitors; i++)
+    if (*(this->_monitors+i))
+      if (((*(this->_monitors+i))->_enabled) && 
+          ((*(this->_monitors+i))->_vt))
+        CALL(((*(this->_monitors+i))->_vt), putc_advance_and_sync, 
+             do_sync, advance, csize, charkey);
+  
+  return 0;
+}
+
+/* Clear tile on all available terminals */
+int clsm(clear_pos, uint32_t do_sync)
+{
+  for (unsigned int i=0; i<this->_num_of_monitors; i++)
+    if (*(this->_monitors+i))
+      if (((*(this->_monitors+i))->_enabled) && 
+          ((*(this->_monitors+i))->_vt))
+        CALL(((*(this->_monitors+i))->_vt), clear_pos, do_sync);
+  
+  return 0;
+}
+
+/* Sync all available terminals */
+int clsm(sync_terms)
+{
+  for (unsigned int i=0; i<this->_num_of_monitors; i++)
+    if (*(this->_monitors+i))
+      if (((*(this->_monitors+i))->_enabled) && 
+          ((*(this->_monitors+i))->_vt))
+        CALL(((*(this->_monitors+i))->_vt), sync_term);
+  
+  return 0;
+}
+
+/* Setup all monitors */
+int clsm(setup_all_monitors)
+{
+  int ret;
+  
+  for (unsigned int i=0; i<1; i++)
+  {
+    ret = CALL(this, setup_monitor, i);
+    if (ret) return ret;
+  }
+  
+  return 0;
+}
+
+/* Enable all monitors */
+int clsm(enable_all_monitors)
+{
+  int ret;
+  
+  for (unsigned int i=0; i<1; i++)
+  {
+    ret = CALL(this, enable_monitor, i);
+    if (ret) return ret;
+  }
+  
+  return 0;
+}
+
+/* Activate all video terminals */
+int clsm(activate_vts, uint32_t fontID)
+{
+  for (unsigned int i=0; i<this->_num_of_monitors; i++)
+    if (*(this->_monitors+i))
+      if (((*(this->_monitors+i))->_enabled) && 
+          (!((*(this->_monitors+i))->_vt)))
+        CALL((*(this->_monitors+i)), videoterminal, fontID);
+  
+  return 0;
+}
+
 /* initialize object */
 int clsm(init, void * init_params)
 {
@@ -1260,8 +1522,18 @@ int clsm(init, void * init_params)
   clsmlnk(get_num_of_monitors);
   clsmlnk(setup_monitor);
   clsmlnk(enable_monitor);
+  clsmlnk(enable_all_monitors);
+  clsmlnk(setup_all_monitors);
+  clsmlnk(activate_vts);
+  clsmlnk(set_vts_fontcolor);
   clsmlnk(get_monitor_by_ID);
   clsmlnk(redraw);
+  clsmlnk(move_cur);
+  clsmlnk(move_cur_rel);
+  clsmlnk(move_cur_prop);
+  clsmlnk(sync_terms);
+  clsmlnk(vputc);
+  clsmlnk(clear_pos);
   clsmlnk(load_font_from_file);
   clsmlnk(destroy);
   

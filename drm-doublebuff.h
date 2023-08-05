@@ -97,9 +97,13 @@ typedef struct
 {
   int (*init)(void *, void *);
   
-  int (* putc_advance_and_sync)(void *, uint32_t do_sync, 
+  int (* putc_advance_and_sync)(void *, 
+                                uint32_t do_sync, uint32_t advance, 
                                 uint32_t csize, char * charkey);
-  int (* move_cur)(void *, uint32_t x, uint32_t y);
+  int (* move_cur)(void *, int32_t x, int32_t y);
+  int (* move_cur_rel)(void *, int32_t rx, int32_t ry);
+  int (* move_cur_prop)(void *, int32_t px, int32_t py);
+  int (* clear_pos)(void *, uint32_t do_sync);
   uint32_t (* get_curx)(void *);
   uint32_t (* get_cury)(void *);
   uint32_t (* get_nrows)(void *);
@@ -201,6 +205,8 @@ typedef struct
   monitor * (* get_monitor_by_ID)(void *, uint32_t monID);
   int (* setup_monitor)(void *, uint32_t monID);
   int (* enable_monitor)(void *, uint32_t monID);
+  int (* setup_all_monitors)(void *);
+  int (* enable_all_monitors)(void *);
   
   int (* set_or_drop_master_mode)(void *, uint32_t setdrop);
   
@@ -208,6 +214,18 @@ typedef struct
   int (* get_num_of_loaded_fonts)(void *);
   int (* get_font_info)(void *, uint32_t fontID, struct font_metrics_s *);
   int (* redraw)(void *);
+  
+  int (* activate_vts)(void *, uint32_t fontID);
+  int (* set_vts_fontcolor)(void *, uint32_t fcolor);
+  
+  int (* vputc)(void *, uint32_t do_sync, uint32_t advance, 
+                        uint32_t csize, char * charkey);
+  int (* clear_pos)(void *, uint32_t do_sync);
+  int (* move_cur)(void *, int32_t x, int32_t y);
+  int (* move_cur_rel)(void *, int32_t x, int32_t y);
+  int (* move_cur_prop)(void *, int32_t x, int32_t y);
+  int (* sync_terms)(void *);
+  
   
   int (* destroy)(void *);
   

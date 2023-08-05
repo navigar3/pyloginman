@@ -11,12 +11,18 @@ class videoterm:
     
     self.__putc_advance_and_sync = \
       getattr(self._lv, self._fpre + 'putc_advance_and_sync')
+      
+    self.__sync_term = \
+      getattr(self._lv, self._fpre + 'sync_term')
     
     self.__get_nrows = \
       getattr(self._lv, self._fpre + 'get_nrows')
     
     self.__get_ncols = \
       getattr(self._lv, self._fpre + 'get_ncols')
+    
+    self._tc = self.__get_ncols(self._vt)
+    self._tr = self.__get_nrows(self._vt)
     
     self.__get_curx = \
       getattr(self._lv, self._fpre + 'get_curx')
@@ -27,19 +33,41 @@ class videoterm:
     self.__move_cur = \
       getattr(self._lv, self._fpre + 'move_cur')
     
+    self.__move_cur_rel = \
+      getattr(self._lv, self._fpre + 'move_cur_rel')
+    
     self.__set_fontcolor = \
       getattr(self._lv, self._fpre + 'set_fontcolor')
     
-  def vputc(self, c, sync=1, lc=None):
+  def vputc(self, c, sync=1, adv=1, lc=None):
     if lc is not None:
       _lc = lc
     else:
       _lc = len(c)
     
-    self.__putc_advance_and_sync(self._vt, sync, _lc, c)
+    self.__putc_advance_and_sync(self._vt, sync, adv, _lc, c)
   
-  def move_cur(self, x, y):
-    self.__move_cur(self._vt, x, y)
+  def sync_term(self):
+    self.__sync_term(self._vt)
+  
+  def get_term_dims(self):
+    return (self._tc, self._tr)
+  
+  def move_cur(self, mv, mtype='abs'):
+    if   mtype == 'abs':
+      self.__move_cur(self._vt, c_int(mv[0]), c_int(mv[1]))
+    elif mtype == 'rel':
+      self.__move_cur_rel(self._vt, c_int(mv[0]), c_int(mv[1]))
+    elif mtype == 'prop':
+      if mv[0] >=0:
+        x = int((mv[0] * self._tc) / 1000)
+      else:
+        x = -1
+      if mv[1] >=0:
+        y = int((mv[1] * self._tr) / 1000)
+      else:
+        y = -1
+      self.__move_cur(self._vt, c_int(x), c_int(y))
   
   def set_fontcolor(self, color):
     self.__set_fontcolor(self._vt, color)
@@ -68,6 +96,9 @@ class monitor:
     
     print('PyHandler: monitor %d is %d x %d' % 
       (self._monID, self._w, self._h))
+  
+  def get_monitor_dims(self):
+    return (self._w, self._h)
   
   def draw_rectangle(self, x0, y0, rw, rh, color):
     return self.__draw_rectangle(self._mon, x0, y0, rw, rh, color)
@@ -136,8 +167,38 @@ class videodev:
     self.__enable_monitor = \
       getattr(self._lv, self._fpre + 'enable_monitor')
     
+    self.__enable_all_monitors = \
+      getattr(self._lv, self._fpre + 'enable_all_monitors')
+    
+    self.__setup_all_monitors = \
+      getattr(self._lv, self._fpre + 'setup_all_monitors')
+      
+    self.__activate_vts = \
+      getattr(self._lv, self._fpre + 'activate_vts')
+    
+    self.__set_vts_fontcolor = \
+      getattr(self._lv, self._fpre + 'set_vts_fontcolor')
+    
     self.__redraw = \
       getattr(self._lv, self._fpre + 'redraw')
+    
+    self.__move_cur = \
+      getattr(self._lv, self._fpre + 'move_cur')
+    
+    self.__move_cur_rel = \
+      getattr(self._lv, self._fpre + 'move_cur_rel')
+    
+    self.__move_cur_prop = \
+      getattr(self._lv, self._fpre + 'move_cur_prop')
+    
+    self.__vputc = \
+      getattr(self._lv, self._fpre + 'vputc')
+    
+    self.__clear_pos = \
+      getattr(self._lv, self._fpre + 'clear_pos')
+      
+    self.__sync_terms = \
+      getattr(self._lv, self._fpre + 'sync_terms')
       
     self.__load_font_from_file = \
       getattr(self._lv, self._fpre + 'load_font_from_file')
@@ -152,8 +213,45 @@ class videodev:
   def redraw(self):
     self.__redraw(self._vd)
   
+  def sync_terms(self):
+    self.__sync_terms(self._vd)
+  
+  def move_cur(self, mv, mtype='abs'):
+    if   mtype == 'abs':
+      self.__move_cur(self._vd, c_int(mv[0]), c_int(mv[1]))
+    elif mtype == 'rel':
+      self.__move_cur_rel(self._vd, c_int(mv[0]), c_int(mv[1]))
+    elif mtype == 'prop':
+      self.__move_cur_prop(self._vd, c_int(mv[0]), c_int(mv[1]))
+  
+  def vputc(self, c, sync=1, adv=1, lc=None):
+    if lc is not None:
+      _lc = lc
+    else:
+      _lc = len(c)
+    
+    self.__vputc(self._vd, sync, adv, _lc, c)
+    
+  def clear_pos(self, sync=1):
+    self.__clear_pos(self._vd, sync)
+      
+  def get_num_of_monitors(self):
+    return self._nmons
+  
   def setup_monitor(self, monID):
     return self.__setup_monitor(self._vd, monID)
+  
+  def setup_all_monitors(self):
+    return self.__setup_all_monitors(self._vd)
+    
+  def enable_all_monitors(self):
+    return self.__enable_all_monitors(self._vd)
+  
+  def activate_vts(self, fontID):
+    return self.__activate_vts(self._vd, fontID)
+  
+  def set_vts_fontcolor(self, font_color):
+    return self.__set_vts_fontcolor(self._vd, font_color)
     
   def enable_monitor(self, monID):
     return self.__enable_monitor(self._vd, monID)
