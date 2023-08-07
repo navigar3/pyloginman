@@ -197,6 +197,9 @@ class videodev:
     self.__clear_pos = \
       getattr(self._lv, self._fpre + 'clear_pos')
       
+    self.__clear_terms = \
+      getattr(self._lv, self._fpre + 'clear_terms')
+      
     self.__sync_terms = \
       getattr(self._lv, self._fpre + 'sync_terms')
       
@@ -234,6 +237,9 @@ class videodev:
     
   def clear_pos(self, sync=1):
     self.__clear_pos(self._vd, sync)
+  
+  def clear_terms(self):
+    self.__clear_terms(self._vd)
       
   def get_num_of_monitors(self):
     return self._nmons

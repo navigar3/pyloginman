@@ -107,11 +107,20 @@ int blocking_read_multibytes_from_term(char * buff)
 }
 
 
+int get_curr_tty_num()
+{
+  return curr_tty_num;
+}
+
+
 /* Handle Virtual Terminal switch manually. 
  *  int to_tty: ttynumber to activate. */
 void switch_tty_and_wait(int to_tty)
 {
   struct vt_mode vtmode = orig_vtmode;
+  
+  if (to_tty == curr_tty_num)
+    return;
   
   /* First, drop Direct Rendering Manager Master Mode in order
    * to allow other process to load their FrameBuffers. */

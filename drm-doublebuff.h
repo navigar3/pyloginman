@@ -104,6 +104,7 @@ typedef struct
   int (* move_cur_rel)(void *, int32_t rx, int32_t ry);
   int (* move_cur_prop)(void *, int32_t px, int32_t py);
   int (* clear_pos)(void *, uint32_t do_sync);
+  int (* clear_term)(void *);
   uint32_t (* get_curx)(void *);
   uint32_t (* get_cury)(void *);
   uint32_t (* get_nrows)(void *);
@@ -148,6 +149,7 @@ typedef struct
   uint32_t (* get_monitor_width)(void *);
   uint32_t (* get_monitor_height)(void *);
   
+  int (* clear_scr)(void *);
   int (* draw_rectangle)(void *, 
                          uint32_t x0, uint32_t y0,
                          uint32_t rw, uint32_t rh,
@@ -220,6 +222,7 @@ typedef struct
   
   int (* vputc)(void *, uint32_t do_sync, uint32_t advance, 
                         uint32_t csize, char * charkey);
+  int (* clear_terms)(void *);
   int (* clear_pos)(void *, uint32_t do_sync);
   int (* move_cur)(void *, int32_t x, int32_t y);
   int (* move_cur_rel)(void *, int32_t x, int32_t y);

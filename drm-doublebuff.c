@@ -376,6 +376,29 @@ int clsm(clear_pos, uint32_t sync_now)
   return 0;
 }
 
+/* Clear terminal */
+int clsm(clear_term)
+{
+  CALL(Parent, clear_scr);
+  
+  struct vt_tile_status_s * vts;
+    
+  for (unsigned int r = 0; r<this->_rows; r++)
+  {
+    for (unsigned int c = 0; c<this->_cols; c++)
+    {
+      vts = this->_sb + r * this->_cols + c;
+      vts->need_update = false;
+      vts->written = false;
+    }
+  }
+  
+  this->_curx = this->_cury = 0;
+  this->_need_update = false;
+  
+  return 0;
+}
+
 /* Sync monitor related to this terminal */
 int clsm(sync_term)
 {
@@ -457,6 +480,7 @@ int clsm(init, void * init_params)
   clsmlnk(putc_advance_and_sync);
   clsmlnk(clear_pos);
   clsmlnk(sync_term);
+  clsmlnk(clear_term);
   clsmlnk(get_nrows);
   clsmlnk(get_ncols);
   clsmlnk(get_curx);
@@ -889,6 +913,65 @@ uint32_t clsm(get_monitor_height)
   return this->_height;
 }
 
+int clsm(clear_scr)
+{
+  unsigned int off;
+  struct modeset_buf * buf, * bbuf;
+  
+  int ret;
+  
+  /* Check if monitor is enabled */
+  if (!this->_enabled)
+  {
+    fprintf(stderr, "Cannot draw on disabled monitor!\n");
+    return -1;
+  }
+  
+  /* Select backward buffer and operate on it. */
+  buf = &(this->_dev->bufs[this->_dev->front_buf ^ 1]);
+  
+  /* Select background buffer. */
+  bbuf = &(this->_dev->bufs[2]);
+  
+  /* Draw background on backward buffer */
+  for (unsigned int j = 0; j < buf->height; ++j)
+  {
+    for (unsigned int k = 0; k < buf->width; ++k) 
+    {
+      off = buf->stride * j + k * 4;
+      *(uint32_t*)&buf->map[off] = *(uint32_t*)&bbuf->map[off];
+    }
+  }
+  
+  /* Flip buffers */
+  ret = drmModeSetCrtc(Parent->_drm_fd, 
+                       this->_dev->crtc, buf->fb, 0, 0,
+                       &this->_dev->conn, 1, &this->_dev->mode);
+  if (ret)
+  {
+    fprintf(stderr, "cannot flip CRTC for connector %u (%d): %m\n",
+            this->_dev->conn, errno);
+    return -1;
+  }
+  else
+    this->_dev->front_buf ^= 1;
+    
+  /* Select the new backward buffer and copy data on it. */
+  buf = &(this->_dev->bufs[this->_dev->front_buf ^ 1]);
+  
+  /* Draw background on (now flipped) backward buffer */
+  for (unsigned int j = 0; j < buf->height; ++j)
+  {
+    for (unsigned int k = 0; k < buf->width; ++k) 
+    {
+      off = buf->stride * j + k * 4;
+      *(uint32_t*)&buf->map[off] = *(uint32_t*)&bbuf->map[off];
+    }
+  }
+  
+  return 0;
+}
+
 /* Initialize object */
 int clsm(init, void * init_params)
 {
@@ -901,6 +984,7 @@ int clsm(init, void * init_params)
   clsmlnk(get_monitor_width);
   clsmlnk(get_monitor_height);
   clsmlnk(videoterminal);
+  clsmlnk(clear_scr);
   clsmlnk(draw_rectangle);
   clsmlnk(sync_monitor);
   clsmlnk(destroy);
@@ -1458,6 +1542,17 @@ int clsm(clear_pos, uint32_t do_sync)
   return 0;
 }
 
+int clsm(clear_terms)
+{
+  for (unsigned int i=0; i<this->_num_of_monitors; i++)
+    if (*(this->_monitors+i))
+      if (((*(this->_monitors+i))->_enabled) && 
+          ((*(this->_monitors+i))->_vt))
+        CALL(((*(this->_monitors+i))->_vt), clear_term);
+  
+  return 0;
+}
+
 /* Sync all available terminals */
 int clsm(sync_terms)
 {
@@ -1534,6 +1629,7 @@ int clsm(init, void * init_params)
   clsmlnk(sync_terms);
   clsmlnk(vputc);
   clsmlnk(clear_pos);
+  clsmlnk(clear_terms);
   clsmlnk(load_font_from_file);
   clsmlnk(destroy);
   

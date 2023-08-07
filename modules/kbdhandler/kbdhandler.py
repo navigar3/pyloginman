@@ -24,6 +24,9 @@ class kbdman:
     self._lib.video_set_master_mode = CFUNCTYPE(c_int)(funset)
     self._lib.video_drop_master_mode = CFUNCTYPE(c_int)(fundrop)
   
+  def get_curr_tty_num(self):
+    return self._lib.get_curr_tty_num()
+  
   def readc(self, cbuff):
     return self._lib.blocking_read_multibytes_from_term(cbuff)
   
