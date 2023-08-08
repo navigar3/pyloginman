@@ -8,6 +8,9 @@ all: modules/drmhandler/drm_handler.so modules/kbdhandler/kbd_handler.so
 tools/hashtable_dyn.o:
 	$(MAKE) -C tools hashtable_dyn.o
 
+tools/zhelper_dyn.o:
+	$(MAKE) -C tools zhelper_dyn.o
+
 kbd-handler.o: kbd-handler.c
 	$(CC) -c $(CFLAGS) -o $@ $?
 
@@ -35,8 +38,8 @@ kbd-handler.o: kbd-handler.c
 drmobjtest: drmobjtest.o drm-doublebuff.o tools/hashtable.o
 	$(CC) -o $@ $^ $(LDFLAGS)
 	
-modules/drmhandler/drm_handler.so: drm-doublebuff.o tools/hashtable_dyn.o
-	$(CC) -shared -o $@ $^ $(LDFLAGS) -ldrm
+modules/drmhandler/drm_handler.so: drm-doublebuff.o tools/hashtable_dyn.o tools/zhelper_dyn.o
+	$(CC) -shared -o $@ $^ $(LDFLAGS) -ldrm -lz
 
 modules/kbdhandler/kbd_handler.so: kbd-handler.o
 	$(CC) -shared -o $@ $^ $(LDFLAGS)

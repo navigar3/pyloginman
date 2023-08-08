@@ -10,6 +10,9 @@ hashtable.o: hashtable.c hashtable.h ../cobj.h
 hashtable_dyn.o: hashtable.c hashtable.h ../cobj.h
 	$(CC) -c $(CFLAGS) -fPIC -o $@ $<
 
+zhelper_dyn.o: zhelper.c hashtable.h ../cobj.h
+	$(CC) -c $(CFLAGS) -fPIC -o $@ $<
+
 main.o: main.c hashtable.h ../cobj.h
 	$(CC) -c $(CFLAGS) -o $@ $<
 

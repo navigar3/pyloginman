@@ -206,6 +206,9 @@ class videodev:
     self.__load_font_from_file = \
       getattr(self._lv, self._fpre + 'load_font_from_file')
     
+    self.__load_image_from_file = \
+      getattr(self._lv, self._fpre + 'load_image_from_file')
+    
     self.__set_or_drop_master_mode = \
       getattr(self._lv, self._fpre + 'set_or_drop_master_mode')
     
@@ -267,6 +270,9 @@ class videodev:
   
   def load_font_from_file(self, font_path):
     self.__load_font_from_file(self._vd, font_path.encode())
+  
+  def load_image_from_file(self, image_path):
+    self.__load_image_from_file(self._vd, image_path.encode())
     
   def quit_videodev(self):
     self.__destroy(self._vd)

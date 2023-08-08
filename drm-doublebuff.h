@@ -213,6 +213,7 @@ typedef struct
   int (* set_or_drop_master_mode)(void *, uint32_t setdrop);
   
   int (* load_font_from_file)(void *, char * font_file_name);
+  int (* load_image_from_file)(void *, char * image_file_name);
   int (* get_num_of_loaded_fonts)(void *);
   int (* get_font_info)(void *, uint32_t fontID, struct font_metrics_s *);
   int (* redraw)(void *);

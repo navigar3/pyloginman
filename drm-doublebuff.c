@@ -7,12 +7,14 @@
 #include <stdlib.h>
 #include <string.h>
 #include <sys/mman.h>
+#include <sys/stat.h>
 #include <time.h>
 #include <unistd.h>
 #include <xf86drm.h>
 #include <xf86drmMode.h>
 
 #include "cobj.h"
+#include "tools/zhelper.h"
 
 #define _DRM_DOUBLEBUFF_H_PRIVATE
 
@@ -1605,6 +1607,88 @@ int clsm(activate_vts, uint32_t fontID)
   return 0;
 }
 
+/* Load image from file */
+int clsm(load_image_from_file, char * image_file_name)
+{
+  int fd;
+  struct stat sb;
+  char * fmap;
+  size_t m_off = 0;
+  
+  bool unmap_file = true;
+  
+  fd = open(image_file_name, O_RDONLY);
+  if (fd<0)
+    fprintf(stderr, "open()\n");
+  
+  if (fstat(fd, &sb)<0)
+    fprintf(stderr, "fstat()\n");
+  
+  if (!(fmap = mmap(NULL, sb.st_size, PROT_READ, MAP_PRIVATE, fd, 0)))
+    fprintf(stderr, "mmap()\n");
+  
+  /* Check for magick */
+  if (memcmp(fmap, "i0i0", 4)==0)
+  {
+    fprintf(stderr, "Uncompressed image.\n");
+    m_off += 4;
+  }
+  else if (memcmp(fmap, "z0z0", 4)==0)
+  {
+    fprintf(stderr, "Compressed image.\n");
+    uint32_t zlen = *((uint32_t *)(fmap+4));
+    fprintf(stderr, "Compressed image size = %d.\n", sb.st_size-m_off);
+    fprintf(stderr, "Image size = %d.\n", zlen);
+    m_off += 8;
+    
+    void * buff = z_prepare_buffer((uint32_t)sb.st_size-m_off);
+    int ret = z_inflate(sb.st_size-m_off, fmap+m_off, buff);
+    if (ret)
+    {
+      fprintf(stderr, "Error while inflating!\n");
+      munmap(fmap, sb.st_size);
+      return -1;
+    }
+    
+    munmap(fmap, sb.st_size);
+    unmap_file = false;
+    
+    m_off = 0;
+    fmap = z_get_buffer_data(buff);
+    
+    if (memcmp(fmap, "i0i0", 4))
+    {
+      fprintf(stderr, "File data corrupted.\n");
+      z_destroy_buffer(buff);
+      return -1;
+    }
+    else
+      m_off = 4;
+  }
+  else
+  {
+    fprintf(stderr, "Unkwnown image type!\n");
+    munmap(fmap, sb.st_size);
+    return -1;
+  }
+  
+  uint32_t m = *((uint32_t *)(fmap+m_off));
+  m_off += 4;
+  uint32_t w = *((uint32_t *)(fmap+m_off));
+  m_off += 4;
+  uint32_t h = *((uint32_t *)(fmap+m_off));
+  m_off += 4;
+  
+  fprintf(stderr, "Image info: mode=%d, w=%d, h=%d\n", m, w, h);
+  
+  if (unmap_file)
+    munmap(fmap, sb.st_size);
+    
+  fprintf(stderr, "All done.\n");
+  
+  return 0;
+}
+
 /* initialize object */
 int clsm(init, void * init_params)
 {
@@ -1631,6 +1715,7 @@ int clsm(init, void * init_params)
   clsmlnk(clear_pos);
   clsmlnk(clear_terms);
   clsmlnk(load_font_from_file);
+  clsmlnk(load_image_from_file);
   clsmlnk(destroy);
   
   this->_card = (char *)init_params;

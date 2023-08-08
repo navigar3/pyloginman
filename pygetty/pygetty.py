@@ -16,6 +16,7 @@ S.setup_all_monitors()
 S.enable_all_monitors()
 
 S.load_font_from_file('../fontsgen/fonts2.baf')
+S.load_image_from_file('../tools/FallenLeaf.baf')
 
 S.activate_vts(0)
 S.set_vts_fontcolor(0x00ffffff)
