@@ -29,6 +29,222 @@ drmvideo * new_drmvideo(char * videocard)
 
 
 /*************************************/
+/* Implement imagetool class methods */
+#ifndef _CLASS_NAME
+#define _CLASS_NAME imagetool
+
+thisclass_creator
+
+/* Load image from file*/
+int clsm(load_from_file, char * image_file_name)
+{
+  int fd;
+  struct stat sb;
+  char * fmap;
+  size_t m_off = 0;
+  
+  fd = open(image_file_name, O_RDONLY);
+  if (fd<0)
+  {
+    fprintf(stderr, "open()\n");
+    return 1;
+  }
+  
+  if (fstat(fd, &sb)<0)
+  {
+    fprintf(stderr, "fstat()\n");
+    return 1;
+  }
+  
+  if (!(fmap = mmap(NULL, sb.st_size, PROT_READ, MAP_PRIVATE, fd, 0)))
+  {
+    fprintf(stderr, "mmap()\n");
+    return 1;
+  }
+  
+  /* Check for magick */
+  if (memcmp(fmap, "i0i0", 4)==0)
+  {
+    fprintf(stderr, "Uncompressed image.\n");
+    this->_immap = fmap;
+    this->_immapsz = (size_t)sb.st_size;
+    m_off += 4;
+  }
+  
+  else if (memcmp(fmap, "z0z0", 4)==0)
+  {
+    fprintf(stderr, "Compressed image.\n");
+    m_off += 4;
+    uint32_t zlen = *((uint32_t *)(fmap+m_off));
+    m_off += 4;
+    fprintf(stderr, "Compressed image size = %d.\n", sb.st_size-m_off);
+    fprintf(stderr, "Image size = %d.\n", zlen);
+    
+    this->_imbuff = z_prepare_buffer(zlen);
+    int ret = z_inflate(sb.st_size-m_off, fmap+m_off, this->_imbuff);
+    if (ret)
+    {
+      fprintf(stderr, "Error while inflating!\n");
+      munmap(fmap, sb.st_size);
+      return -1;
+    }
+    
+    /* Successfully inflated */
+    
+    /* Free compressed file map */
+    munmap(fmap, sb.st_size);
+    
+    /* Set map offset to 0 */
+    m_off = 0;
+    
+    /* Save pointer to uncompressed map. */
+    this->_immap = z_get_buffer_data(this->_imbuff);
+    this->_immapsz = zlen;
+    
+    /* Check magick and advance map offset. */
+    if (memcmp(this->_immap, "i0i0", 4))
+    {
+      fprintf(stderr, "File data corrupted.\n");
+      z_destroy_buffer(this->_imbuff);
+      return -1;
+    }
+    else
+      m_off = 4;
+  }
+  
+  else
+  {
+    fprintf(stderr, "Unkwnown image type!\n");
+    munmap(fmap, sb.st_size);
+    return -1;
+  }
+  
+  this->_immode = *((uint32_t *)(this->_immap+m_off));
+  m_off += 4;
+  this->_w = *((uint32_t *)(this->_immap+m_off));
+  m_off += 4;
+  this->_h = *((uint32_t *)(this->_immap+m_off));
+  m_off += 4;
+  
+  this->_imraw = this->_immap+m_off;
+  
+  fprintf(stderr, "Image info: mode=%d, w=%d, h=%d\n", 
+                  this->_immode, this->_w, this->_h);
+    
+  fprintf(stderr, "All done.\n");
+  
+  return 0;
+}
+
+/* Resize image */
+int clsm(resize, uint32_t out_fmt,
+                 uint32_t out_w, uint32_t out_h,
+                 char * out)
+{
+  char * in = this->_imraw;
+  uint32_t in_fmt = this->_immode;
+  uint32_t in_w = this->_w;
+  uint32_t in_h = this->_h;
+  
+  uint32_t x, y;
+  
+  uint32_t xi[2], yi[2];
+ 
+  uint32_t w0 = in_w - 1;
+  uint32_t h0 = in_h - 1;
+  
+  uint32_t w1 = out_w - 1;
+  uint32_t h1 = out_h - 1;
+  
+  uint32_t r, g, b;
+  uint8_t * px_in, * px_out;
+  
+  uint32_t pxsize_in, pxsize_out;
+  
+  
+  if (in_fmt == F_RGB24) pxsize_in = 3;
+  else if (in_fmt == F_RGBA32) pxsize_in = 4;
+  else return -1;
+  
+  if (out_fmt == F_RGB24) pxsize_out = 3;
+  else if (out_fmt == F_RGBA32) pxsize_out = 4;
+  else return -1;
+  
+  for (y=0; y<out_h; y++)
+    for (x=0; x<out_w; x++)
+    {
+      xi[0] = (w0 * x) / w1;
+      xi[1] = xi[0] + 1;
+      if (xi[1] >= in_w) xi[1] = xi[0];
+      
+      yi[0] = (h0 * y) / h1;
+      yi[1] = yi[0] + 1;
+      if (yi[1] >= in_h) yi[1] = yi[0];
+      
+      r = g = b = 0;
+      
+      for (int i=0; i<2; i++)
+        for(int j=0; j<2; j++)
+        {
+          px_in = ((uint8_t *)in) + (yi[j] * in_w + xi[i]) * pxsize_in;
+          r += (uint32_t)(*px_in);
+          g += (uint32_t)(*(px_in+1));
+          b += (uint32_t)(*(px_in+2));
+        }
+      
+      r = r / 4;
+      g = g / 4;
+      b = b / 4;
+      
+      px_out = ((uint8_t *)out) + (y * out_w + x) * pxsize_out;
+      *px_out     = (uint8_t)b;
+      *(px_out+1) = (uint8_t)g;
+      *(px_out+2) = (uint8_t)r;
+      
+    }
+    
+  return 0;
+}
+
+/* Destroy imagetool object */
+int clsm(destroy)
+{
+  if (this->_imbuff)
+    z_destroy_buffer(this->_imbuff);
+  else
+    munmap(this->_immap, this->_immapsz);
+  
+  return 0;
+}
+
+/* Initialize imagetool object */
+int clsm(init, void * init_params)
+{
+  clsmlnk(load_from_file);
+  clsmlnk(resize);
+  clsmlnk(destroy);
+  
+  char * fname = (char *)init_params;
+  
+  if (!fname)
+    return 1;
+    
+  if (CALL(this, load_from_file, fname))
+  {
+    fprintf(stderr, "Error while loading image file %s!\n", fname);
+    return 1;
+  }
+   
+  return 0;
+}
+
+#endif
+#undef _CLASS_NAME
+/* imagetool object methods ends. */
+/**********************************/
+
+
+/*************************************/
 /* Implement videoterm class methods */
 #ifndef _CLASS_NAME
 #define _CLASS_NAME videoterm
@@ -587,7 +803,7 @@ int clsm(sync_monitor)
   /* Get drm fd*/
   int drm_fd = Parent->_drm_fd;
   
-  /* Select backward buffer and operate on it. */
+  /* Select backward buffer. */
   buf = &(this->_dev->bufs[this->_dev->front_buf ^ 1]);
   
   /* Flip buffers */
@@ -825,6 +1041,26 @@ int clsm(destroy)
   return 0;
 }
 
+/* Set background image from imagetool object */
+int clsm(set_backg_image, void * image)
+{
+  /* Check if monitor is enabled */
+  if (!this->_enabled)
+  {
+    fprintf(stderr, "Cannot draw on disabled monitor!\n");
+    return -1;
+  }
+  
+  fprintf(stderr, "Copyng background %d x %d\n", this->_width, 
+                  this->_height);
+  
+  CALL(((imagetool *)image), 
+       resize, 32, this->_width, this->_height, 
+       (char *)(this->_dev->bufs[2].map));
+  
+  return 0;
+}
+
 /* Draw rectangle */
 int clsm(draw_rectangle, uint32_t x0, uint32_t y0,
                          uint32_t rw, uint32_t rh,
@@ -987,6 +1223,7 @@ int clsm(init, void * init_params)
   clsmlnk(get_monitor_height);
   clsmlnk(videoterminal);
   clsmlnk(clear_scr);
+  clsmlnk(set_backg_image);
   clsmlnk(draw_rectangle);
   clsmlnk(sync_monitor);
   clsmlnk(destroy);
@@ -1469,6 +1706,67 @@ int clsm(redraw)
   return 0;
 }
 
+/* Set backgrounds on all monitors. */
+int clsm(set_backgrounds)
+{
+  if (!this->_im)
+    return 1;
+  
+  bool _resize_img = true;
+  
+  /* Set background on first monitor */
+  if (*(this->_monitors))
+    if ((*(this->_monitors))->_enabled)
+      CALL((*(this->_monitors)), set_backg_image, this->_im);
+  
+  /* Set background on all others monitors */
+  for (int i=1; i<this->_num_of_monitors; i++)
+    if (*(this->_monitors+i))
+      if ((*(this->_monitors+i))->_enabled)
+      {
+        /* Check if there is another monitor having same sizes 
+         *  and avoid resizing image again. */
+        for (int j=0; j<this->_num_of_monitors; j++)
+        {
+          if (*(this->_monitors+j))
+            if ((*(this->_monitors+j))->_enabled)
+              if ( ( (*(this->_monitors+j))->_width  == 
+                     (*(this->_monitors+i))->_width ) &&
+                   ( (*(this->_monitors+j))->_height == 
+                     (*(this->_monitors+i))->_height ) )
+              {
+                unsigned int _len = 
+                  (*(this->_monitors+j))->_width *
+                  (*(this->_monitors+j))->_height * 4;
+                
+                uint8_t * _d = 
+                  (*(this->_monitors+i))->_dev->bufs[2].map;
+                
+                uint8_t * _s = 
+                  (*(this->_monitors+j))->_dev->bufs[2].map;
+                
+                for (unsigned int k=0; k<_len; k++)
+                  *(_d+k) = *(_s+k);
+                
+                _resize_img = false;
+                
+                break;
+              }
+        }
+        
+        if (_resize_img)
+          CALL((*(this->_monitors+i)), set_backg_image, this->_im);
+        else
+          _resize_img = true;
+      }
+      
+  /* Now destroy imagetool object */
+  CALL(this->_im, destroy);
+  this->_im = NULL;
+  
+  return 0;
+}
+
 /* Move cursors on all available terminals */
 int clsm(move_cur, int32_t x, int32_t y)
 {
@@ -1572,7 +1870,7 @@ int clsm(setup_all_monitors)
 {
   int ret;
   
-  for (unsigned int i=0; i<1; i++)
+  for (unsigned int i=0; i<this->_num_of_monitors; i++)
   {
     ret = CALL(this, setup_monitor, i);
     if (ret) return ret;
@@ -1586,7 +1884,7 @@ int clsm(enable_all_monitors)
 {
   int ret;
   
-  for (unsigned int i=0; i<1; i++)
+  for (unsigned int i=0; i<this->_num_of_monitors; i++)
   {
     ret = CALL(this, enable_monitor, i);
     if (ret) return ret;
@@ -1610,82 +1908,11 @@ int clsm(activate_vts, uint32_t fontID)
 /* Load image from file */
 int clsm(load_image_from_file, char * image_file_name)
 {
-  int fd;
-  struct stat sb;
-  char * fmap;
-  size_t m_off = 0;
+  this->_im = new(imagetool, image_file_name);
   
-  bool unmap_file = true;
-  
-  fd = open(image_file_name, O_RDONLY);
-  if (fd<0)
-    fprintf(stderr, "open()\n");
-  
-  if (fstat(fd, &sb)<0)
-    fprintf(stderr, "fstat()\n");
-  
-  if (!(fmap = mmap(NULL, sb.st_size, PROT_READ, MAP_PRIVATE, fd, 0)))
-    fprintf(stderr, "mmap()\n");
-  
-  /* Check for magick */
-  if (memcmp(fmap, "i0i0", 4)==0)
-  {
-    fprintf(stderr, "Uncompressed image.\n");
-    m_off += 4;
-  }
-  else if (memcmp(fmap, "z0z0", 4)==0)
-  {
-    fprintf(stderr, "Compressed image.\n");
-    uint32_t zlen = *((uint32_t *)(fmap+4));
-    fprintf(stderr, "Compressed image size = %d.\n", sb.st_size-m_off);
-    fprintf(stderr, "Image size = %d.\n", zlen);
-    m_off += 8;
+  if (!this->_im)
+    return 1;
     
-    void * buff = z_prepare_buffer((uint32_t)sb.st_size-m_off);
-    int ret = z_inflate(sb.st_size-m_off, fmap+m_off, buff);
-    if (ret)
-    {
-      fprintf(stderr, "Error while inflating!\n");
-      munmap(fmap, sb.st_size);
-      return -1;
-    }
-    
-    munmap(fmap, sb.st_size);
-    unmap_file = false;
-    
-    m_off = 0;
-    fmap = z_get_buffer_data(buff);
-    
-    if (memcmp(fmap, "i0i0", 4))
-    {
-      fprintf(stderr, "File data corrupted.\n");
-      z_destroy_buffer(buff);
-      return -1;
-    }
-    else
-      m_off = 4;
-  }
-  else
-  {
-    fprintf(stderr, "Unkwnown image type!\n");
-    munmap(fmap, sb.st_size);
-    return -1;
-  }
-  
-  uint32_t m = *((uint32_t *)(fmap+m_off));
-  m_off += 4;
-  uint32_t w = *((uint32_t *)(fmap+m_off));
-  m_off += 4;
-  uint32_t h = *((uint32_t *)(fmap+m_off));
-  m_off += 4;
-  
-  fprintf(stderr, "Image info: mode=%d, w=%d, h=%d\n", m, w, h);
-  
-  if (unmap_file)
-    munmap(fmap, sb.st_size);
-    
-  fprintf(stderr, "All done.\n");
-  
   return 0;
 }
 
@@ -1707,6 +1934,7 @@ int clsm(init, void * init_params)
   clsmlnk(set_vts_fontcolor);
   clsmlnk(get_monitor_by_ID);
   clsmlnk(redraw);
+  clsmlnk(set_backgrounds);
   clsmlnk(move_cur);
   clsmlnk(move_cur_rel);
   clsmlnk(move_cur_prop);

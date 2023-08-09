@@ -21,6 +21,8 @@ S.load_image_from_file('../tools/FallenLeaf.baf')
 S.activate_vts(0)
 S.set_vts_fontcolor(0x00ffffff)
 
+S.set_backgrounds()
+
 
 IDesc = {'username': {'pos': (('prop', 200, 400), ('rel', -8, 0)), 
                       'value': 'username: '},

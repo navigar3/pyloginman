@@ -178,6 +178,9 @@ class videodev:
     
     self.__set_vts_fontcolor = \
       getattr(self._lv, self._fpre + 'set_vts_fontcolor')
+      
+    self.__set_backgrounds = \
+      getattr(self._lv, self._fpre + 'set_backgrounds')
     
     self.__redraw = \
       getattr(self._lv, self._fpre + 'redraw')
@@ -218,6 +221,9 @@ class videodev:
   
   def redraw(self):
     self.__redraw(self._vd)
+  
+  def set_backgrounds(self):
+    self.__set_backgrounds(self._vd)
   
   def sync_terms(self):
     self.__sync_terms(self._vd)

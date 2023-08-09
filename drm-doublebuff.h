@@ -79,6 +79,9 @@ struct vt_sym_status_s
   uint8_t sym[5];
 };
 
+#define  F_RGB24   0x00000018
+#define  F_RGBA32  0x00000020
+
 #define _rch4(px) ((px & 0x00ff0000) >> 16)
 #define _gch4(px) ((px & 0x0000ff00) >>  8)
 #define _bch4(px) (px & 0x000000ff)
@@ -88,6 +91,30 @@ struct vt_sym_status_s
     ( ( ( (_rch4(b) * a + _rch4(f) * (15-a)) >> 4 ) << 16 ) | \
       ( ( (_gch4(b) * a + _gch4(f) * (15-a)) >> 4 ) <<  8 ) | \
         ( (_bch4(b) * a + _bch4(f) * (15-a)) >> 4 )  )  )
+        
+/* Image manipulation class */
+typedef struct 
+{
+  int (*init)(void *, void *);
+  int (* load_from_file)(void *, char * filename);
+  int (* resize)(void *, uint32_t dmode,
+                         uint32_t new_w,
+                         uint32_t new_h,
+                         char * dmap);
+  
+  int (* destroy)(void *);
+  
+  uint32_t _immode;
+  uint32_t _w;
+  uint32_t _h;
+  void * _imbuff;
+  char * _immap;
+  char * _imraw;
+  size_t _immapsz;
+  
+} imagetool;
+
+newclass_h(imagetool)
 
 #endif
 
@@ -154,6 +181,7 @@ typedef struct
                          uint32_t x0, uint32_t y0,
                          uint32_t rw, uint32_t rh,
                          uint32_t color);
+  int (* set_backg_image)(void *, void * image);
   
   int (* sync_monitor)(void *);
   
@@ -218,6 +246,8 @@ typedef struct
   int (* get_font_info)(void *, uint32_t fontID, struct font_metrics_s *);
   int (* redraw)(void *);
   
+  int (* set_backgrounds)(void *);
+  
   int (* activate_vts)(void *, uint32_t fontID);
   int (* set_vts_fontcolor)(void *, uint32_t fcolor);
   
@@ -245,6 +275,8 @@ typedef struct
   
   uint32_t _num_of_fonts;
   struct fonts_list * _fonts;
+  
+  imagetool * _im;
   
   int (* _modeset_open)(void *);
   int (* _modeset_prepare)(void *);
