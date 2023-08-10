@@ -47,8 +47,8 @@ class videoterm:
     
     self.__putc_advance_and_sync(self._vt, sync, adv, _lc, c)
   
-  def sync_term(self):
-    self.__sync_term(self._vt)
+  def sync_term(self, sync=1):
+    self.__sync_term(self._vt, sync)
   
   def get_term_dims(self):
     return (self._tc, self._tr)
@@ -247,8 +247,8 @@ class videodev:
   def clear_pos(self, sync=1):
     self.__clear_pos(self._vd, sync)
   
-  def clear_terms(self):
-    self.__clear_terms(self._vd)
+  def clear_terms(self, sync=1):
+    self.__clear_terms(self._vd, sync)
       
   def get_num_of_monitors(self):
     return self._nmons

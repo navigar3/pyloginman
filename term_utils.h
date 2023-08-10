@@ -1,6 +1,6 @@
-#ifndef _KBD_HANDLER_H
+#ifndef _TERM_UTILS_H
 
-#define _KBD_HANDLER_H
+#define _TERM_UTILS_H
 
 
 void set_terminal_mode(void);

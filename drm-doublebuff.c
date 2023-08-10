@@ -595,9 +595,9 @@ int clsm(clear_pos, uint32_t sync_now)
 }
 
 /* Clear terminal */
-int clsm(clear_term)
+int clsm(clear_term, uint32_t do_sync)
 {
-  CALL(Parent, clear_scr);
+  CALL(Parent, clear_scr, do_sync);
   
   struct vt_tile_status_s * vts;
     
@@ -810,6 +810,21 @@ int clsm(sync_monitor)
   int ret = drmModeSetCrtc(drm_fd, 
                        this->_dev->crtc, buf->fb, 0, 0,
                        &this->_dev->conn, 1, &this->_dev->mode);
+  
+  /* Copy background on not refreshed front buffer, now flipped. */
+  if (this->_reset_background)
+  {
+    uint8_t * _s = this->_dev->bufs[2].map;
+    uint8_t * _d = this->_dev->bufs[this->_dev->front_buf].map;
+    
+    unsigned int _len = this->_width * this->_height * 4;
+    
+    for (unsigned int k=0; k<_len; k++)
+      *(_d+k) = *(_s+k);
+    
+    this->_reset_background = false;
+  }
+  
   if (ret)
   {
     fprintf(stderr, "cannot flip CRTC for connector %u (%d): %m\n",
@@ -1151,7 +1166,7 @@ uint32_t clsm(get_monitor_height)
   return this->_height;
 }
 
-int clsm(clear_scr)
+int clsm(clear_scr, uint32_t do_sync)
 {
   unsigned int off;
   struct modeset_buf * buf, * bbuf;
@@ -1179,6 +1194,12 @@ int clsm(clear_scr)
       off = buf->stride * j + k * 4;
       *(uint32_t*)&buf->map[off] = *(uint32_t*)&bbuf->map[off];
     }
+  }
+  
+  if (!do_sync)
+  {
+    this->_reset_background = true;
+    return 0;
   }
   
   /* Flip buffers */
@@ -1842,13 +1863,13 @@ int clsm(clear_pos, uint32_t do_sync)
   return 0;
 }
 
-int clsm(clear_terms)
+int clsm(clear_terms, uint32_t do_sync)
 {
   for (unsigned int i=0; i<this->_num_of_monitors; i++)
     if (*(this->_monitors+i))
       if (((*(this->_monitors+i))->_enabled) && 
           ((*(this->_monitors+i))->_vt))
-        CALL(((*(this->_monitors+i))->_vt), clear_term);
+        CALL(((*(this->_monitors+i))->_vt), clear_term, do_sync);
   
   return 0;
 }
@@ -1870,7 +1891,7 @@ int clsm(setup_all_monitors)
 {
   int ret;
   
-  for (unsigned int i=0; i<this->_num_of_monitors; i++)
+  for (unsigned int i=0; i<1; i++)
   {
     ret = CALL(this, setup_monitor, i);
     if (ret) return ret;
@@ -1884,7 +1905,7 @@ int clsm(enable_all_monitors)
 {
   int ret;
   
-  for (unsigned int i=0; i<this->_num_of_monitors; i++)
+  for (unsigned int i=0; i<1; i++)
   {
     ret = CALL(this, enable_monitor, i);
     if (ret) return ret;

@@ -2,8 +2,8 @@ from ctypes import *
 
 import os
 
-class kbdman:
-  def __init__(self, libname='kbd_handler.so', libpath=''):
+class termh:
+  def __init__(self, libname='term_utils.so', libpath=''):
     
     if '__file__' in globals():
       libpath = os.path.dirname(__file__)
@@ -15,6 +15,9 @@ class kbdman:
     
   def set_terminal_mode(self):
     self._lib.set_terminal_mode()
+  
+  def restore_terminal_mode(self):
+    self._lib.restore_terminal_mode()
   
   def get_drm_Set_Drop_handler(self):
     return {'set_handler': self._lib.video_set_master_mode,
