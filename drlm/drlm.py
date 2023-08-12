@@ -1,25 +1,48 @@
 #!/usr/bin/env python3
 
+LOGIN_MANAGER_MOD_PATH = '/opt/home/maverick/work/drm-framebuffer/drm-splash4slack/'
+LOGIN_MANAGER_RES_PATH = '/opt/home/maverick/work/drm-framebuffer/drm-splash4slack/resources/'
+
 import sys
 from time import sleep
 
-sys.path.append('../')
+sys.path.append(LOGIN_MANAGER_MOD_PATH)
 
 from modules.lmtermutils.lmtermutils import termh
 from modules.lminterface.lminterface import loop_man
 from modules.lmauthenticate.lmauthenticate import authenticate_user
 
 if __name__ == '__main__':
+  
+  # Parse cmdline args
+  nargs = len(sys.argv)
+  i = 1
+  opts = {}
+  while(i < nargs):
+    if sys.argv[i] == '--tty':
+      if i+1 < nargs:
+        opts['tty'] = sys.argv[i+1]
+        i += 2
+      else:
+        print('Missing argument for %s' % sys.argv[i])
+        sys.exit(1)
+  
   T = termh()
+  
+  if 'tty' in opts:
+    if T.open_tty(opts['tty']) != 0:
+      print('Error opening tty %s!' % opts['tty'])
+      sleep(5)
+      sys.exit(1)
   
   T.set_terminal_mode()
   
   cbuff = b'\x00' * 10
       
   L = loop_man()
-  L.initialize_screens('../fontsgen/fonts2.baf', 
+  L.initialize_screens(LOGIN_MANAGER_RES_PATH + 'fonts2.baf', 
                        0x0000ffff, 
-                       '../tools/FallenLeaf.baf')
+                       LOGIN_MANAGER_RES_PATH + 'FallenLeaf.baf')
   L.reset_if()
   
   # Set auth token to None
@@ -28,14 +51,14 @@ if __name__ == '__main__':
   # Main loop 
   while(True):
     r = T.readc(cbuff)
-    
+      
     # Ctrl-C breaks by now
-    if r==1 and cbuff[0]==3:
-      print ('Bye!')
-      break
+    #if r==1 and cbuff[0]==3:
+    #  print ('Bye!')
+    #  break
     
     # Catch Shift-Fn sequences
-    elif r==5 and cbuff[0] == 27:
+    if r==5 and cbuff[0] == 27:
       if cbuff[1] == ord('[') and cbuff[4] == ord('~'):
         sfn = None
         if   cbuff[2] == ord('2') and cbuff[3] == ord('5'):
@@ -56,9 +79,9 @@ if __name__ == '__main__':
           sfn = 8
         
       if not sfn is None:
-        if not sfn == kbdh.get_curr_tty_num():
+        if not sfn == T.get_curr_tty_num():
           L._S.set_or_drop_master_mode(0)
-          kbdh.switch_tty(sfn)
+          T.switch_tty(sfn)
           L._S.set_or_drop_master_mode(1)
           L._S.redraw()
         
@@ -116,6 +139,10 @@ if __name__ == '__main__':
       gid = authok['res']['pw_gid']
       shell = authok['res']['pw_shell']
       home = authok['res']['pw_dir']
+      
+      if uid == 0:
+        print('Refuse to login as root.')
+        sys.exit(2)
       
       # Drop privileges
       os.setgid(gid)

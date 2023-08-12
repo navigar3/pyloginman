@@ -12,6 +12,9 @@ class termh:
     
     # Load library
     self._lib = cdll.LoadLibrary(fullpath)
+  
+  def open_tty(self, tty):
+    return self._lib.open_tty(tty.encode())
     
   def set_terminal_mode(self):
     self._lib.set_terminal_mode()

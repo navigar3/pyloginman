@@ -816,11 +816,9 @@ int clsm(sync_monitor)
   {
     uint8_t * _s = this->_dev->bufs[2].map;
     uint8_t * _d = this->_dev->bufs[this->_dev->front_buf].map;
+    uint32_t _sz = this->_dev->bufs[this->_dev->front_buf].size;
     
-    unsigned int _len = this->_width * this->_height * 4;
-    
-    for (unsigned int k=0; k<_len; k++)
-      *(_d+k) = *(_s+k);
+    memcpy(_d, _s, _sz);
     
     this->_reset_background = false;
   }
@@ -1168,7 +1166,6 @@ uint32_t clsm(get_monitor_height)
 
 int clsm(clear_scr, uint32_t do_sync)
 {
-  unsigned int off;
   struct modeset_buf * buf, * bbuf;
   
   int ret;
@@ -1187,14 +1184,7 @@ int clsm(clear_scr, uint32_t do_sync)
   bbuf = &(this->_dev->bufs[2]);
   
   /* Draw background on backward buffer */
-  for (unsigned int j = 0; j < buf->height; ++j)
-  {
-    for (unsigned int k = 0; k < buf->width; ++k) 
-    {
-      off = buf->stride * j + k * 4;
-      *(uint32_t*)&buf->map[off] = *(uint32_t*)&bbuf->map[off];
-    }
-  }
+  memcpy(buf->map, bbuf->map, buf->size);
   
   if (!do_sync)
   {
@@ -1219,14 +1209,7 @@ int clsm(clear_scr, uint32_t do_sync)
   buf = &(this->_dev->bufs[this->_dev->front_buf ^ 1]);
   
   /* Draw background on (now flipped) backward buffer */
-  for (unsigned int j = 0; j < buf->height; ++j)
-  {
-    for (unsigned int k = 0; k < buf->width; ++k) 
-    {
-      off = buf->stride * j + k * 4;
-      *(uint32_t*)&buf->map[off] = *(uint32_t*)&bbuf->map[off];
-    }
-  }
+  memcpy(buf->map, bbuf->map, buf->size);
   
   return 0;
 }
@@ -1891,7 +1874,7 @@ int clsm(setup_all_monitors)
 {
   int ret;
   
-  for (unsigned int i=0; i<1; i++)
+  for (unsigned int i=0; i<this->_num_of_monitors; i++)
   {
     ret = CALL(this, setup_monitor, i);
     if (ret) return ret;
@@ -1905,7 +1888,7 @@ int clsm(enable_all_monitors)
 {
   int ret;
   
-  for (unsigned int i=0; i<1; i++)
+  for (unsigned int i=0; i<this->_num_of_monitors; i++)
   {
     ret = CALL(this, enable_monitor, i);
     if (ret) return ret;
