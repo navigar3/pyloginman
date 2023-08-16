@@ -2,8 +2,8 @@ from ctypes import *
 
 import os
 
-class termh:
-  def __init__(self, libname='term_utils.so', libpath=''):
+class utils:
+  def __init__(self, libname='utils.so', libpath=''):
     
     if '__file__' in globals():
       libpath = os.path.dirname(__file__)
@@ -15,6 +15,16 @@ class termh:
   
   def open_tty(self, tty):
     return self._lib.open_tty(tty.encode())
+  
+  def detach_tty(self):
+    return self._lib.detach_tty()
+  
+  def update_utmp(self, tty):
+    self._lib.update_utmp(tty.encode())
+  
+  def log_utmp(self, pid, tty, username, hostname=0, hostaddr=0):
+    self._lib.log_utmp(pid, tty.encode(), username.encode(), 
+      hostname, hostaddr)
     
   def set_terminal_mode(self):
     self._lib.set_terminal_mode()
@@ -35,6 +45,9 @@ class termh:
   
   def readc(self, cbuff):
     return self._lib.blocking_read_multibytes_from_term(cbuff)
+  
+  def wait_for_tty(self, ttyn):
+    self._lib.wait_for_tty_active(ttyn)
   
   def switch_tty(self, ttyn):
     self._lib.switch_tty_and_wait(ttyn)

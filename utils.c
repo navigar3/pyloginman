@@ -189,6 +189,25 @@ own_tty:
     video_set_master_mode();
 }
 
+int wait_for_tty_active(int tty_num)
+{
+  /* Wait until this tty become active again. */
+  if (ioctl(STDIN_FILENO, VT_WAITACTIVE, tty_num) == -1)
+  {
+    fprintf(stderr, "ioctl() VT_WAITACTIVE %d failed!\n", 2);
+    exit(1);
+  }
+  
+  return 0;
+}
+
+int detach_tty(void)
+{
+  ioctl(0, TIOCNOTTY, NULL);
+  
+  return 0;
+}
+
 
 
 /* From agetty.c                         */
@@ -423,4 +442,242 @@ int kbmode;
 */
   
   return 0;
+}
+
+#include <sys/file.h>
+#include <time.h>
+#include <utmp.h>
+
+#ifdef LOGIN_PROCESS
+#  define SYSV_STYLE
+#endif
+
+#ifdef	SYSV_STYLE
+
+#define _PATH_WTMPLOCK		"/etc/wtmplock"
+
+static inline int write_all(int fd, const void *buf, size_t count)
+{
+  while (count) {
+    ssize_t tmp;
+
+    errno = 0;
+    tmp = write(fd, buf, count);
+    if (tmp > 0) {
+      count -= tmp;
+      if (count)
+        buf = (void *) ((char *) buf + tmp);
+    } else if (errno != EINTR && errno != EAGAIN)
+      return -1;
+    if (errno == EAGAIN)    /* Try later, *sigh* */
+      usleep(250000);
+  }
+  return 0;
+}
+
+/* Update our utmp entry. */
+void update_utmp(char * line)
+{
+	struct utmp ut;
+	time_t t;
+	pid_t pid = getpid();
+	pid_t sid = getsid(0);
+	struct utmp *utp;
+  
+  static char * fakehost = NULL;
+  
+  char * vcline;
+  char * null_vcl = '\0';
+  
+  /* On virtual console remember the line which is used for */
+	if (strncmp(line, "tty", 3) == 0 &&
+	    strspn(line + 3, "0123456789") == strlen(line+3))
+		vcline = line+3;
+  else
+    vcline = null_vcl;
+
+	/*
+	 * The utmp file holds miscellaneous information about things started by
+	 * /sbin/init and other system-related events. Our purpose is to update
+	 * the utmp entry for the current process, in particular the process type
+	 * and the tty line we are listening to. Return successfully only if the
+	 * utmp file can be opened for update, and if we are able to find our
+	 * entry in the utmp file.
+	 */
+	utmpname(_PATH_UTMP);
+	setutent();
+
+	/*
+	 * Find my pid in utmp.
+	 *
+	 * FIXME: Earlier (when was that?) code here tested only utp->ut_type !=
+	 * INIT_PROCESS, so maybe the >= here should be >.
+	 *
+	 * FIXME: The present code is taken from login.c, so if this is changed,
+	 * maybe login has to be changed as well (is this true?).
+	 */
+	while ((utp = getutent()))
+		if (utp->ut_pid == pid
+				&& utp->ut_type >= INIT_PROCESS
+				&& utp->ut_type <= DEAD_PROCESS)
+			break;
+
+	if (utp) {
+		memcpy(&ut, utp, sizeof(ut));
+	} else {
+		/* Some inits do not initialize utmp. */
+		memset(&ut, 0, sizeof(ut));
+		if (vcline && *vcline)
+			/* Standard virtual console devices */
+			strncpy(ut.ut_id, vcline, sizeof(ut.ut_id));
+		else {
+			size_t len = strlen(line);
+			char * ptr;
+			if (len >= sizeof(ut.ut_id))
+				ptr = line + len - sizeof(ut.ut_id);
+			else
+				ptr = line;
+			strncpy(ut.ut_id, ptr, sizeof(ut.ut_id));
+		}
+	}
+
+	strncpy(ut.ut_user, "LOGIN", sizeof(ut.ut_user));
+	strncpy(ut.ut_line, line, sizeof(ut.ut_line));
+	if (fakehost)
+		strncpy(ut.ut_host, fakehost, sizeof(ut.ut_host));
+	time(&t);
+#if defined(_HAVE_UT_TV)
+	ut.ut_tv.tv_sec = t;
+#else
+	ut.ut_time = t;
+#endif
+	ut.ut_type = LOGIN_PROCESS;
+	ut.ut_pid = pid;
+	ut.ut_session = sid;
+
+	pututline(&ut);
+	endutent();
+
+	{
+#ifdef HAVE_UPDWTMP
+		updwtmp(_PATH_WTMP, &ut);
+#else
+		int ut_fd;
+		int lf;
+
+		if ((lf = open(_PATH_WTMPLOCK, O_CREAT | O_WRONLY, 0660)) >= 0) {
+			flock(lf, LOCK_EX);
+			if ((ut_fd =
+			     open(_PATH_WTMP, O_APPEND | O_WRONLY)) >= 0) {
+				write_all(ut_fd, &ut, sizeof(ut));
+				close(ut_fd);
+			}
+			flock(lf, LOCK_UN);
+			close(lf);
+		}
+#endif				/* HAVE_UPDWTMP */
+	}
+}
+
+#endif				/* SYSV_STYLE */
+
+
+/* caller guarantees n > 0 */
+static inline void xstrncpy(char *dest, const char *src, size_t n)
+{
+        strncpy(dest, src, n-1);
+        dest[n-1] = 0;
+}
+
+/* Log utmp user login */
+void log_utmp(int pid, char * tty_name, char * username, 
+              char * hostname, char * hostaddress)
+{
+	struct utmp ut;
+	struct utmp *utp;
+	struct timeval tv;
+
+	utmpname(_PATH_UTMP);
+	setutent();
+  
+  char * tty_number;
+  char * null_tty_num = '\0';
+  
+  /* On virtual console remember the line which is used for */
+	if (strncmp(tty_name, "tty", 3) == 0 &&
+	    strspn(tty_name + 3, "0123456789") == strlen(tty_name+3))
+		tty_number = tty_name+3;
+  else
+    tty_number = null_tty_num;
+
+	/* Find pid in utmp.
+	 *
+	 * login sometimes overwrites the runlevel entry in /var/run/utmp,
+	 * confusing sysvinit. I added a test for the entry type, and the
+	 * problem was gone. (In a runlevel entry, st_pid is not really a pid
+	 * but some number calculated from the previous and current runlevel.)
+	 * -- Michael Riepe <michael@stud.uni-hannover.de>
+	 */
+	while ((utp = getutent()))
+		if (utp->ut_pid == pid
+		    && utp->ut_type >= INIT_PROCESS
+		    && utp->ut_type <= DEAD_PROCESS)
+			break;
+
+	/* If we can't find a pre-existing entry by pid, try by line.
+	 * BSD network daemons may rely on this. */
+	if (utp == NULL && tty_name) {
+		setutent();
+		ut.ut_type = LOGIN_PROCESS;
+		strncpy(ut.ut_line, tty_name, sizeof(ut.ut_line));
+		utp = getutline(&ut);
+	}
+
+	/* If we can't find a pre-existing entry by pid and line, try it by id.
+	 * Very stupid telnetd daemons don't set up utmp at all. (kzak) */
+	if (utp == NULL && tty_number) {
+	     setutent();
+	     ut.ut_type = DEAD_PROCESS;
+	     strncpy(ut.ut_id, tty_number, sizeof(ut.ut_id));
+	     utp = getutid(&ut);
+	}
+
+	if (utp)
+		memcpy(&ut, utp, sizeof(ut));
+	else
+		/* some gettys/telnetds don't initialize utmp... */
+		memset(&ut, 0, sizeof(ut));
+
+	if (tty_number && ut.ut_id[0] == 0)
+		strncpy(ut.ut_id, tty_number, sizeof(ut.ut_id));
+	if (username)
+		strncpy(ut.ut_user, username, sizeof(ut.ut_user));
+	if (tty_name)
+		xstrncpy(ut.ut_line, tty_name, sizeof(ut.ut_line));
+
+#ifdef _HAVE_UT_TV		/* in <utmpbits.h> included by <utmp.h> */
+	gettimeofday(&tv, NULL);
+	ut.ut_tv.tv_sec = tv.tv_sec;
+	ut.ut_tv.tv_usec = tv.tv_usec;
+#else
+	{
+		time_t t;
+		time(&t);
+		ut.ut_time = t;	/* ut_time is not always a time_t */
+				/* glibc2 #defines it as ut_tv.tv_sec */
+	}
+#endif
+	ut.ut_type = USER_PROCESS;
+	ut.ut_pid = pid;
+	if (hostname) {
+		xstrncpy(ut.ut_host, hostname, sizeof(ut.ut_host));
+		if (hostaddress)
+			memcpy(&ut.ut_addr_v6, hostaddress,
+			       sizeof(ut.ut_addr_v6));
+	}
+
+	pututline(&ut);
+	endutent();
+
+	updwtmp(_PATH_WTMP, &ut);
 }

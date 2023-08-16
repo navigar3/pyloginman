@@ -8,12 +8,16 @@ from time import sleep
 
 sys.path.append(LOGIN_MANAGER_MOD_PATH)
 
-from modules.lmtermutils.lmtermutils import termh
+from modules.lmutils.lmutils import utils
 from modules.lminterface.lminterface import loop_man
 from modules.lmauthenticate.lmauthenticate import authenticate_user
 
+tty_num = None
+
 if __name__ == '__main__':
   
+  sleep(3)
+
   # Parse cmdline args
   nargs = len(sys.argv)
   i = 1
@@ -27,22 +31,33 @@ if __name__ == '__main__':
         print('Missing argument for %s' % sys.argv[i])
         sys.exit(1)
   
-  T = termh()
+  U = utils()
   
   if 'tty' in opts:
-    if T.open_tty(opts['tty']) != 0:
+    if U.open_tty(opts['tty']) != 0:
       print('Error opening tty %s!' % opts['tty'])
       sleep(5)
       sys.exit(1)
+    
+    tty_num = int(opts['tty'][3:])
+    
+    # Wait for tty to become active
+    U.wait_for_tty(tty_num)
+    
+  # Set terminal mode
+  U.set_terminal_mode()
   
-  T.set_terminal_mode()
+  if 'tty' in opts:
+    # Update utmp
+    U.update_utmp(opts['tty'])
   
-  cbuff = b'\x00' * 10
+  
+  cbuff = b'\x00' * 50
       
   L = loop_man()
   L.initialize_screens(LOGIN_MANAGER_RES_PATH + 'fonts2.baf', 
-                       0x0000ffff, 
-                       LOGIN_MANAGER_RES_PATH + 'FallenLeaf.baf')
+                       0x00000000, 
+                       LOGIN_MANAGER_RES_PATH + 'MountainSky.baf')
   L.reset_if()
   
   # Set auth token to None
@@ -50,7 +65,7 @@ if __name__ == '__main__':
   
   # Main loop 
   while(True):
-    r = T.readc(cbuff)
+    r = U.readc(cbuff)
       
     # Ctrl-C breaks by now
     #if r==1 and cbuff[0]==3:
@@ -79,9 +94,9 @@ if __name__ == '__main__':
           sfn = 8
         
       if not sfn is None:
-        if not sfn == T.get_curr_tty_num():
+        if not sfn == U.get_curr_tty_num():
           L._S.set_or_drop_master_mode(0)
-          T.switch_tty(sfn)
+          U.switch_tty(sfn)
           L._S.set_or_drop_master_mode(1)
           L._S.redraw()
         
@@ -115,54 +130,81 @@ if __name__ == '__main__':
   
   
   L._S.quit_videodev()
-  T.restore_terminal_mode()
+  U.restore_terminal_mode()
   
   
   import os
   
+  # First detach tty
+  #if 'tty' in opts:
+  #  U.detach_tty()
+  
+  # Sanity checks
+  if authok is not None:
+    for key in ('pw_name', 'pw_uid', 'pw_gid', 'pw_shell', 'pw_dir'):
+      if not key in authok['res']:
+        sleep(2)
+        sys.exit(1)
+  
+  # Get user uid, gid, shell and home
+  username = authok['res']['pw_name']
+  uid = authok['res']['pw_uid']
+  gid = authok['res']['pw_gid']
+  shell = authok['res']['pw_shell']
+  home = authok['res']['pw_dir']
+  
+  if 'tty' in opts:
+    # Log utmp entry
+    U.log_utmp(os.getpid(), opts['tty'], username)
+  
   # Fork
   pid = os.fork()
-  
+
   #Child
   if pid == 0:
     # Now open a shell for authenticated user
-    if authok is not None:
+    
+    if 'tty' in opts:
+      # Start new session
+      os.setsid()
       
-      # Check for keys in authok
-      for key in ('pw_uid', 'pw_gid', 'pw_shell', 'pw_dir'):
-        if not key in authok['res']:
-          print('Cannot login!')
-          sys.exit(1)
+      # Open tty
+      U.open_tty(opts['tty'])
+
+      # Get tty gid
+      tty_gid = os.stat('/dev/' + opts['tty']).st_gid
+
+      # Change tty owner
+      os.chown('/dev/' + opts['tty'], uid, tty_gid)
+
+      print('Started new session.')
+      sleep(3)
+    
+    if uid == 0:
+      print('Refuse to login as root.')
+      sleep(2)
+      sys.exit(2)
+    
+    # Drop privileges
+    os.setgid(gid)
+    os.setegid(gid)
+    os.setuid(uid)
+    os.seteuid(uid)
+    
+    # Change directory
+    os.chdir(home)
+    
+    # Set safe IFS
+    if 'IFS' in os.environ:
+      os.environ['IFS'] = " \t\n"
+    
+    # Set HOME env
+    os.environ['HOME'] = home
+    
+    # Launch the shell
+    os.execv(shell, [shell])
       
-      # Get user uid, gid, shell and home
-      uid = authok['res']['pw_uid']
-      gid = authok['res']['pw_gid']
-      shell = authok['res']['pw_shell']
-      home = authok['res']['pw_dir']
-      
-      if uid == 0:
-        print('Refuse to login as root.')
-        sys.exit(2)
-      
-      # Drop privileges
-      os.setgid(gid)
-      os.setegid(gid)
-      os.setuid(uid)
-      os.seteuid(uid)
-      
-      # Change directory
-      os.chdir(home)
-      
-      # Set safe IFS
-      if 'IFS' in os.environ:
-        os.environ['IFS'] = " \t\n"
-      
-      # Set HOME env
-      os.environ['HOME'] = home
-      
-      # Launch the shell
-      os.execv(shell, [shell])
-  
+        
   # Parent
   else:
     # Close stdin, stdout and stderr
@@ -172,4 +214,3 @@ if __name__ == '__main__':
     
     # Wait for user shell to exit...
     os.wait()
-  

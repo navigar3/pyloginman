@@ -132,11 +132,47 @@ class pwdc:
       pass
     
     return 0
+
+
+class sess:
+  def __init__(self):
+    self._name = ['Def']
+  
+  def set_scrs_handler(self, scr):
+    self._S = scr
     
+  def reset_pos(self):
+    for m in IDesc['session_prompt']['pos']:
+      self._S.move_cur((m[1], m[2]), m[0])
+    self._S.move_cur((len(self._name), 0), mtype='rel')
+    self._S.vputc(b'_', adv=0)
+  
+  def clear_field(self, clear_tiles=True):
+    if clear_tiles:
+      for m in IDesc['session_prompt']['pos']:
+        self._S.move_cur((m[1], m[2]), m[0])
+      _ln = len(self._name)
+      for i in range(0, _ln):
+        self._S.clear_pos(sync=0)
+        self._S.move_cur((1, 0), mtype='rel')
+      self._S.sync_terms()
+      
+    self._name = []
+  
+  def validate(self):
+    return ('session', 'Def')
+  
+  def pushch(self, buff, lb):
+    
+    if lb == 1 and buff[0] == ord('p'):
+      pass
+      
+    return 0
+
 
 class loop_man:
   def __init__(self):
-    self._fs = [usrname(), pwdc()]
+    self._fs = [usrname(), pwdc(), sess()]
     self._fn = 0
     self._f = self._fs[self._fn]
     

@@ -170,6 +170,31 @@ int clsm(resize, uint32_t out_fmt,
   else if (out_fmt == F_RGBA32) pxsize_out = 4;
   else return -1;
   
+  if ((in_w == out_w ) && (in_h == out_h))
+  {
+    /* No need to resize */
+    fprintf(stderr, "Same sizes, no need to resize.\n");
+    
+    for (y=0; y<out_h; y++)
+      for (x=0; x<out_w; x++)
+      {
+        px_in = ((uint8_t *)in) + (y * in_w + x) * pxsize_in;
+        px_out = ((uint8_t *)out) + (y * out_w + x) * pxsize_out;
+        
+        r += (uint32_t)(*px_in);
+        g += (uint32_t)(*(px_in+1));
+        b += (uint32_t)(*(px_in+2));
+        
+        *px_out     = (uint8_t)b;
+        *(px_out+1) = (uint8_t)g;
+        *(px_out+2) = (uint8_t)r;
+      }
+    
+    return 0;
+  }
+  
+  
+  /* Resize using nearest neighboor */
   for (y=0; y<out_h; y++)
     for (x=0; x<out_w; x++)
     {
@@ -1488,9 +1513,6 @@ int clsm(_modeset_prepare)
   /* allocate memory for monitors objects array */
   this->_monitors = hcalloc(res->count_connectors, sizeof(monitor *));
   
-  /* store _num_of_monitors */
-  this->_num_of_monitors = res->count_connectors;
-  
 	/* iterate all connectors */
 	for (i = 0; i < res->count_connectors; ++i)
   {
@@ -1513,17 +1535,21 @@ int clsm(_modeset_prepare)
     mon->_conn = conn;
     /* Link __Parent */
     mon->__Parent = (void *)this;
-    /* Store object in array */
-    *(this->_monitors+i) = mon;
     
     if (CALL(this, _modeset_find_crtc, mon))
     {
-      *(this->_monitors+i) = NULL;
+      CALL(mon, destroy);
       continue;
     }
     
 		/* free connector data */
 		//drmModeFreeConnector(conn);
+    
+    /* Store object in array */
+    *(this->_monitors+i) = mon;
+    
+    /* Increment _num_of_monitors */
+    this->_num_of_monitors += 1;
 	}
   
   /* Save res for future operation and do not free it */
