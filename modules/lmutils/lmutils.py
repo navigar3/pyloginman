@@ -22,9 +22,31 @@ class utils:
   def update_utmp(self, tty):
     self._lib.update_utmp(tty.encode())
   
-  def log_utmp(self, pid, tty, username, hostname=0, hostaddr=0):
-    self._lib.log_utmp(pid, tty.encode(), username.encode(), 
-      hostname, hostaddr)
+  def log_utmp(self, pid, tty, username, hostname=None, hostaddr=None):
+    if hostname is None:
+      _hn = 0
+    else:
+      _hn = hostname.encode()
+    if hostaddr is None:
+      _ha = 0
+    else:
+      _ha = hostaddr.encode()
+    self._lib.log_utmp(pid, tty.encode(), username.encode(), _hn, _ha)
+  
+  def log_btmp(self, pid, tty, username, hostname=None, hostaddr=None):
+    if username is None:
+      _us = 0
+    else:
+      _us = username.encode()
+    if hostname is None:
+      _hn = 0
+    else:
+      _hn = hostname.encode()
+    if hostaddr is None:
+      _ha = 0
+    else:
+      _ha = hostaddr.encode()
+    self._lib.log_btmp(pid, tty.encode(), _us, _hn, _ha)
     
   def set_terminal_mode(self):
     self._lib.set_terminal_mode()

@@ -24,4 +24,5 @@ def authenticate_user(pwnam, clear_pwd):
                     'pw_shell': u.pw_shell} 
            }
   else:
-    return {'ans': False, 'res': 'SPentBadPwd'}
+    return {'ans': False, 'res': 'SPentBadPwd',
+            'usrname': pwnam}

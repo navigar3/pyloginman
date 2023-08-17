@@ -292,7 +292,7 @@ int open_tty(char *tty)
 		char buf[100];
 		struct group *gr = NULL;
 		struct stat st;
-		int fd, len;
+		int fd, len, flags;
 		pid_t tid;
 		gid_t gid = 0;
 
@@ -336,35 +336,21 @@ int open_tty(char *tty)
 		close(STDIN_FILENO);
 		errno = 0;
 
-		if (0) {
-
-			if (ioctl(fd, TIOCNOTTY))
-				log_warn( "TIOCNOTTY ioctl failed\n")
-
-			/*
-			 * Let's close all file decriptors before vhangup
-			 * https://lkml.org/lkml/2012/6/5/145
-			 */
-			close(fd);
-			close(STDOUT_FILENO);
-			close(STDERR_FILENO);
-			errno = 0;
-			closed = 1;
-
-			if (vhangup())
-				log_err( "/dev/%s: vhangup() failed: %m", tty)
-		} else
-			close(fd);
-
-		//debug("open(2)\n");
-		//if (open(buf, O_RDWR|O_NOCTTY|O_NONBLOCK, 0) != 0)
-    if (open(buf, O_RDWR|O_NOCTTY, 0) != 0)
+    close(fd);
+    
+    fd = open(buf, O_RDWR|O_NOCTTY|O_NONBLOCK, 0);
+    
+    if (fd != 0)
 			log_err( "/dev/%s: cannot open as standard input: %m", tty)
 
 		if (((tid = tcgetsid(STDIN_FILENO)) < 0) || (pid != tid)) {
 			if (ioctl(STDIN_FILENO, TIOCSCTTY, 1) == -1)
 				log_warn( "/dev/%s: cannot get controlling tty: %m", tty)
 		}
+    
+    flags = fcntl(fd, F_GETFL);
+    flags &= ~O_NONBLOCK;
+    fcntl(fd, F_SETFL, flags);
 
 	} else {
 
@@ -412,34 +398,6 @@ int open_tty(char *tty)
 	memset(tp, 0, sizeof(struct termios));
 	if (tcgetattr(STDIN_FILENO, tp) < 0)
 		log_err( "%s: failed to get terminal attributes: %m", tty)
-
-	/*
-	 * Detect if this is a virtual console or serial/modem line.
-	 * In case of a virtual console the ioctl KDGKBMODE succeeds
-	 * whereas on other lines it will fails.
-	 */
-
-/*
-int kbmode;
-#ifdef KDGKBMODE
-	if (ioctl(STDIN_FILENO, KDGKBMODE, &kbmode) == 0)
-#else
-	if (ioctl(STDIN_FILENO, TIOCMGET, &serial) < 0 && (errno == EINVAL))
-#endif
-	{
-		op->flags |= F_VCONSOLE;
-		if (!op->term)
-			op->term = DEFAULT_VCTERM;
-	} else {
-#ifdef K_RAW
-		op->kbmode = K_RAW;
-#endif
-		if (!op->term)
-			op->term = DEFAULT_STERM;
-	}
-
-	setenv("TERM", op->term, 1);
-*/
   
   return 0;
 }
@@ -680,4 +638,69 @@ void log_utmp(int pid, char * tty_name, char * username,
 	endutent();
 
 	updwtmp(_PATH_WTMP, &ut);
+}
+
+
+#define _PATH_BTMP		"/var/log/btmp"
+
+/*
+ * Logs failed login attempts in _PATH_BTMP, if it exists.
+ * Must be called only with username the name of an actual user.
+ * The most common login failure is to give password instead of username.
+ */
+void log_btmp(int _pid, char * tty_name, char * username, 
+              char * hostname, char * hostaddress)
+{
+	struct utmp ut;
+#if defined(_HAVE_UT_TV)        /* in <utmpbits.h> included by <utmp.h> */
+	struct timeval tv;
+#endif
+
+  char * tty_number;
+  char * null_tty_num = '\0';
+  
+  pid_t pid = (_pid) ? _pid : getpid(); 
+  
+  /* On virtual console remember the line which is used for */
+	if (strncmp(tty_name, "tty", 3) == 0 &&
+	    strspn(tty_name + 3, "0123456789") == strlen(tty_name+3))
+		tty_number = tty_name+3;
+  else
+    tty_number = null_tty_num;
+    
+
+	memset(&ut, 0, sizeof(ut));
+
+	strncpy(ut.ut_user,
+		username ? username : "(unknown)",
+		sizeof(ut.ut_user));
+
+	if (tty_number)
+		strncpy(ut.ut_id, tty_number, sizeof(ut.ut_id));
+	if (tty_name)
+		xstrncpy(ut.ut_line, tty_name, sizeof(ut.ut_line));
+
+#if defined(_HAVE_UT_TV)	/* in <utmpbits.h> included by <utmp.h> */
+	gettimeofday(&tv, NULL);
+	ut.ut_tv.tv_sec = tv.tv_sec;
+	ut.ut_tv.tv_usec = tv.tv_usec;
+#else
+	{
+		time_t t;
+		time(&t);
+		ut.ut_time = t;	/* ut_time is not always a time_t */
+	}
+#endif
+
+	ut.ut_type = LOGIN_PROCESS;	/* XXX doesn't matter */
+	ut.ut_pid = pid;
+
+	if (hostname) {
+		xstrncpy(ut.ut_host, hostname, sizeof(ut.ut_host));
+		if (hostaddress)
+			memcpy(&ut.ut_addr_v6, hostaddress,
+			       sizeof(ut.ut_addr_v6));
+	}
+
+	updwtmp(_PATH_BTMP, &ut);
 }

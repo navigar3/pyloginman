@@ -15,8 +15,6 @@ from modules.lmauthenticate.lmauthenticate import authenticate_user
 tty_num = None
 
 if __name__ == '__main__':
-  
-  sleep(3)
 
   # Parse cmdline args
   nargs = len(sys.argv)
@@ -54,10 +52,11 @@ if __name__ == '__main__':
   
   cbuff = b'\x00' * 50
       
-  L = loop_man()
+  L = loop_man(LOGIN_MANAGER_RES_PATH)
   L.initialize_screens(LOGIN_MANAGER_RES_PATH + 'fonts2.baf', 
                        0x00000000, 
                        LOGIN_MANAGER_RES_PATH + 'MountainSky.baf')
+  
   L.reset_if()
   
   # Set auth token to None
@@ -67,10 +66,11 @@ if __name__ == '__main__':
   while(True):
     r = U.readc(cbuff)
       
-    # Ctrl-C breaks by now
-    #if r==1 and cbuff[0]==3:
-    #  print ('Bye!')
-    #  break
+    # Ctrl-C shutdown by now
+    if r==1 and cbuff[0]==3:
+      res = {'shutdown': 'Yes'}
+      authok = res
+      break
     
     # Catch Shift-Fn sequences
     if r==5 and cbuff[0] == 27:
@@ -111,11 +111,21 @@ if __name__ == '__main__':
                                    _lp['password'].decode())
       
       if auth_res['ans'] == False:
+        if auth_res['res'] == 'PWentNotFound' or \
+          auth_res['res'] == 'SPentNotFound':
+          _username = None
+        elif auth_res['res'] == 'SPentBadPwd':
+          _username = auth_res['usrname']
+        
+        if 'tty' in opts:
+          U.log_btmp(0, opts['tty'], _username)
+        
         L.show_login_err_msg()
         sleep(3)
         L.reset_if()
       
       elif auth_res['ans'] == True:
+        auth_res['session'] = _lp['session']
         L.show_login_success_msg()
         sleep(4)
         
@@ -135,16 +145,19 @@ if __name__ == '__main__':
   
   import os
   
-  # First detach tty
-  #if 'tty' in opts:
-  #  U.detach_tty()
-  
   # Sanity checks
-  if authok is not None:
-    for key in ('pw_name', 'pw_uid', 'pw_gid', 'pw_shell', 'pw_dir'):
-      if not key in authok['res']:
-        sleep(2)
-        sys.exit(1)
+  if authok is None:
+    sleep(3)
+    sys.exit(0)
+    
+  if 'shutdown' in authok:
+    if authok['shutdown'] == 'Yes':
+      os.execv('/sbin/shutdown', ['/sbin/shutdown', '-h', 'now'])
+      
+  for key in ('pw_name', 'pw_uid', 'pw_gid', 'pw_shell', 'pw_dir'):
+    if not key in authok['res']:
+      sleep(2)
+      sys.exit(1)
   
   # Get user uid, gid, shell and home
   username = authok['res']['pw_name']
@@ -176,9 +189,6 @@ if __name__ == '__main__':
 
       # Change tty owner
       os.chown('/dev/' + opts['tty'], uid, tty_gid)
-
-      print('Started new session.')
-      sleep(3)
     
     if uid == 0:
       print('Refuse to login as root.')
@@ -201,8 +211,39 @@ if __name__ == '__main__':
     # Set HOME env
     os.environ['HOME'] = home
     
+    # Default to passwd shell
+    cmd = shell
+    cmdargs = [shell]
+    
+    # Check shell login options
+    if 'session' in authok:
+      if authok['session']['type'] == 'T':
+        _sess = authok['session']['conf']
+        if 'default' in _sess:
+          if _sess['default'] == True:
+            # Exec default passwd shell
+            cmd = shell
+            cmdargs = [shell]
+        else:
+          cmd = _sess['cmd']
+          cmdargs = [_sess['cmd']]
+      
+      elif authok['session']['type'] == 'X':
+        
+        if not 'tty' in opts:
+          print('Not started by init. Refusing to launch Xsession!')
+          sleep(4)
+          sys.exit(2)
+          
+        _sess = authok['session']['conf']
+        if 'default' in _sess:
+          if _sess['default'] == True:
+            # Exec default passwd shell
+            cmd = '/usr/bin/xinit'
+            cmdargs = ['/usr/bin/xinit', '--', 'vt' + str(tty_num)]
+    
     # Launch the shell
-    os.execv(shell, [shell])
+    os.execv(cmd, cmdargs)
       
         
   # Parent
