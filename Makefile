@@ -3,7 +3,7 @@ LDFLAGS+=
 
 .PHONY: clean
 
-all: modules/drmhandler/drm_handler.so modules/lmutils/utils.so
+all: modules/drmhandler/drm_handler.so modules/lmutils/utils.so modules/lmlog/log.so
 
 tools/hashtable_dyn.o:
 	$(MAKE) -C tools hashtable_dyn.o
@@ -14,8 +14,14 @@ tools/zhelper_dyn.o:
 drm-doublebuff.o: drm-doublebuff.c
 	$(CC) -c $(CFLAGS) -o $@ $?
 
+log.o: log.c
+	$(CC) -c $(CFLAGS) -o $@ $?
+
 utils.o: utils.c
 	$(CC) -c $(CFLAGS) -o $@ $?
+
+modules/lmlog/log.so: log.o
+	$(CC) -shared -o $@ $^ $(LDFLAGS)
 
 modules/drmhandler/drm_handler.so: drm-doublebuff.o tools/hashtable_dyn.o tools/zhelper_dyn.o
 	$(CC) -shared -o $@ $^ $(LDFLAGS) -ldrm -lz

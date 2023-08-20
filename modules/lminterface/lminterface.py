@@ -1,3 +1,5 @@
+from modules.lmlog.lmlog import *
+
 import os
 
 from modules.drmhandler.drmhandler import videodev
@@ -190,7 +192,7 @@ class sess:
                 _cmd = keyval[1]
             self._sessions['T'].append({'name': _name, 'cmd': _cmd})
         except:
-          print('Error while opening ', it)
+          lmlog_log('Error while opening ', it)
       
       for it in _xd:
         try:
@@ -206,7 +208,7 @@ class sess:
             self._sessions['X'].append(
               {'name': _name, 'xinitrc': _cmd, 'vt': 'current_vt'})
         except:
-          print('Error while opening ', it)
+          lmlog_log('Error while opening ', it)
     
     return True
     

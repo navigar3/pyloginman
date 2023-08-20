@@ -1,3 +1,5 @@
+from modules.lmlog.lmlog import *
+
 from ctypes import *
 
 import os
@@ -94,7 +96,7 @@ class monitor:
     self.__videoterminal = \
       getattr(self._lv, self._fpre + 'videoterminal')
     
-    print('PyHandler: monitor %d is %d x %d' % 
+    lmlog_dbg(1, 'PyHandler: monitor %d is %d x %d' % 
       (self._monID, self._w, self._h))
   
   def get_monitor_dims(self):
@@ -106,7 +108,7 @@ class monitor:
   def vterm(self, fontID=0):
     _vtobj = c_void_p(self.__videoterminal(self._mon, fontID))
     if _vtobj.value == None:
-        print ("PyHandler: Error starting vterm on monitor %d" % self._monID)
+        lmlog_err("PyHandler: Error starting vterm on monitor %d" % self._monID)
         return None
     
     self._vt = videoterm(self._lv, _vtobj)
@@ -129,10 +131,13 @@ class videodev:
     # Load library
     self._lv = cdll.LoadLibrary(fullpath)
     
+    # Set log fd
+    set_lmlog_fd(self._lv)
+    
     # Initialize device
     self._vd = c_void_p(self._lv.new_drmvideo(self._card_devname))
     if self._vd.value == None:
-      print('Cannot initialize ', self._card_devname)
+      lmlog_err('Cannot initialize ', self._card_devname)
       return None
     
     self._fpre = fun_prefix
@@ -152,14 +157,12 @@ class videodev:
       _mobj = c_void_p(self.__get_monitor_by_ID(self._vd, i))
       
       if _mobj.value == None:
-        print ("PyHandler: Error while fetching monitor %d" % i)
+        lmlog_err("PyHandler: Error while fetching monitor %d" % i)
         return None
       
       mon = monitor(self._lv, _mobj, i)
       
       self._mons[i] = mon
-      
-    print('PyHandler: found %d monitors' % self._nmons)
     
     self.__setup_monitor = \
       getattr(self._lv, self._fpre + 'setup_monitor')

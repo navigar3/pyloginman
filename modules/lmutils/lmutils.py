@@ -1,3 +1,5 @@
+from modules.lmlog.lmlog import *
+
 from ctypes import *
 
 import os
@@ -12,6 +14,10 @@ class utils:
     
     # Load library
     self._lib = cdll.LoadLibrary(fullpath)
+    
+    # Set log fd
+    set_lmlog_fd(self._lib)
+    set_lmlog_dbg_level(self._lib)
   
   def open_tty(self, tty):
     return self._lib.open_tty(tty.encode())

@@ -13,6 +13,7 @@
 #include <xf86drm.h>
 #include <xf86drmMode.h>
 
+#include "log.h"
 #include "cobj.h"
 #include "tools/zhelper.h"
 
@@ -46,26 +47,26 @@ int clsm(load_from_file, char * image_file_name)
   fd = open(image_file_name, O_RDONLY);
   if (fd<0)
   {
-    fprintf(stderr, "open()\n");
+    LogErr("open()")
     return 1;
   }
   
   if (fstat(fd, &sb)<0)
   {
-    fprintf(stderr, "fstat()\n");
+    LogErr("fstat()")
     return 1;
   }
   
   if (!(fmap = mmap(NULL, sb.st_size, PROT_READ, MAP_PRIVATE, fd, 0)))
   {
-    fprintf(stderr, "mmap()\n");
+    LogErr("mmap()")
     return 1;
   }
   
   /* Check for magick */
   if (memcmp(fmap, "i0i0", 4)==0)
   {
-    fprintf(stderr, "Uncompressed image.\n");
+    LogDbg(1, "Uncompressed image.")
     this->_immap = fmap;
     this->_immapsz = (size_t)sb.st_size;
     m_off += 4;
@@ -73,18 +74,18 @@ int clsm(load_from_file, char * image_file_name)
   
   else if (memcmp(fmap, "z0z0", 4)==0)
   {
-    fprintf(stderr, "Compressed image.\n");
+    LogDbg(1, "Compressed image.")
     m_off += 4;
     uint32_t zlen = *((uint32_t *)(fmap+m_off));
     m_off += 4;
-    fprintf(stderr, "Compressed image size = %d.\n", sb.st_size-m_off);
-    fprintf(stderr, "Image size = %d.\n", zlen);
+    LogDbg(1, "Compressed image size = %d.", sb.st_size-m_off)
+    LogDbg(1, "Image size = %d.", zlen)
     
     this->_imbuff = z_prepare_buffer(zlen);
     int ret = z_inflate(sb.st_size-m_off, fmap+m_off, this->_imbuff);
     if (ret)
     {
-      fprintf(stderr, "Error while inflating!\n");
+      LogErr("Error while inflating!")
       munmap(fmap, sb.st_size);
       return -1;
     }
@@ -104,7 +105,7 @@ int clsm(load_from_file, char * image_file_name)
     /* Check magick and advance map offset. */
     if (memcmp(this->_immap, "i0i0", 4))
     {
-      fprintf(stderr, "File data corrupted.\n");
+      LogErr("File data corrupted.")
       z_destroy_buffer(this->_imbuff);
       return -1;
     }
@@ -114,7 +115,7 @@ int clsm(load_from_file, char * image_file_name)
   
   else
   {
-    fprintf(stderr, "Unkwnown image type!\n");
+    LogErr("Unkwnown image type!")
     munmap(fmap, sb.st_size);
     return -1;
   }
@@ -128,10 +129,8 @@ int clsm(load_from_file, char * image_file_name)
   
   this->_imraw = this->_immap+m_off;
   
-  fprintf(stderr, "Image info: mode=%d, w=%d, h=%d\n", 
-                  this->_immode, this->_w, this->_h);
-    
-  fprintf(stderr, "All done.\n");
+  LogDbg(1, "Image info: mode=%d, w=%d, h=%d", 
+            this->_immode, this->_w, this->_h)
   
   return 0;
 }
@@ -173,7 +172,7 @@ int clsm(resize, uint32_t out_fmt,
   if ((in_w == out_w ) && (in_h == out_h))
   {
     /* No need to resize */
-    fprintf(stderr, "Same sizes, no need to resize.\n");
+    LogDbg(1, "Same sizes, no need to resize.")
     
     for (y=0; y<out_h; y++)
       for (x=0; x<out_w; x++)
@@ -256,7 +255,7 @@ int clsm(init, void * init_params)
     
   if (CALL(this, load_from_file, fname))
   {
-    fprintf(stderr, "Error while loading image file %s!\n", fname);
+    LogErr("Error while loading image file %s!", fname)
     return 1;
   }
    
@@ -1978,7 +1977,7 @@ int clsm(init, void * init_params)
   
   this->_card = (char *)init_params;
   
-  fprintf(stderr, "using card '%s'\n", this->_card);
+  LogMsg("using card '%s'", this->_card);
   
   int ret = CALL(this, _modeset_open);
   if (ret)

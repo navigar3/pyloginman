@@ -7,11 +7,14 @@
 #include <linux/vt.h>
 #include <string.h>
 #include <stdlib.h>
+#include <stdint.h>
 
 #include <sys/stat.h>
 #include <grp.h>
 #include <errno.h>
 #include <fcntl.h>
+
+#include "log.h"
 
 //int drmDropMaster(int);
 //int drmSetMaster(int);
@@ -30,7 +33,7 @@ void restore_terminal_mode(void)
   tcsetattr(STDIN_FILENO, TCSAFLUSH, &orig_termios);
   
   if (ioctl(STDIN_FILENO, VT_SETMODE, &orig_vtmode) == -1)
-    fprintf(stderr, "ioctl() SETMODE failed!\n");
+    LogWarn("ioctl() SETMODE failed!")
 }
 
 /* Set terminal parameters and disable Ctrl+Alt+Fn VT switch. */
@@ -38,26 +41,31 @@ void set_terminal_mode(void)
 {
   /* Try to tty number. */
   curr_tty = ttyname(STDIN_FILENO);
-  fprintf(stderr, "ttyname() returns %s\n", curr_tty);
+  LogDbg(1, "ttyname() returns %s", curr_tty)
   
   if (!memcmp(curr_tty, "/dev/tty", 8))
   {
     curr_tty_num = strtol(curr_tty+8, NULL, 10);
-    fprintf(stderr, "ttynum = %d\n", curr_tty_num);
+    LogDbg(1, "ttynum = %d", curr_tty_num)
   }
   else
   {
-    fprintf(stderr, "Error: could not determine tty number!\n");
+    LogErr("Error: could not determine tty number!")
     exit(1);
   }
   
   
-  /* Store current VT parameters. */
+  /* Store current VT parameters.
   if (ioctl(STDIN_FILENO, VT_GETMODE, &orig_vtmode) == -1)
   {
-    fprintf(stderr, "ioctl() VT_GETMODE failed!\n");
+    LogErr("ioctl() VT_GETMODE failed!")
     exit(1);
-  }
+  }*/
+  memset(&orig_vtmode, 0, sizeof(orig_vtmode));
+  
+  uint8_t * p = (uint8_t *)(&orig_vtmode);
+  for (int i=0; i<sizeof(orig_vtmode); i++)
+    LogDbg(1, "vtmode dumped + %d = %x", i, *(p+i))
   
   /* Set call to function to restore original terminal params 
    * on exit. */
@@ -65,16 +73,17 @@ void set_terminal_mode(void)
   
   
   /* Disable Ctrl+Alt+Fn Virtual Terminal Switch. */
-  struct vt_mode new_vtmode = orig_vtmode;
+  struct vt_mode new_vtmode;
+  memcpy(&new_vtmode, &orig_vtmode, sizeof(struct vt_mode));
   
   new_vtmode.mode = VT_PROCESS;
   
   if (ioctl(STDIN_FILENO, VT_SETMODE, &new_vtmode) == -1)
   {
-    fprintf(stderr, "ioctl() VT_SETMODE failed!\n");
+    LogErr("ioctl() VT_SETMODE failed!")
     exit(1);
   }
-  fprintf(stderr, "ioctl() VT_SETMODE succeded.\n");
+  LogDbg(1, "ioctl() VT_SETMODE succeded.");
   
   
   /* Set new terminal parameters. */
@@ -141,7 +150,7 @@ void switch_tty_and_wait(int to_tty)
   
   if (ioctl(STDIN_FILENO, VT_SETMODE, &vtmode) == -1)
   {
-    fprintf(stderr, "ioctl() VT_SETMODE failed!\n");
+    LogErr("ioctl() VT_SETMODE failed!")
     exit(1);
   }
   
@@ -149,7 +158,7 @@ void switch_tty_and_wait(int to_tty)
   /* Switch to the requested ttynum. */
   if (ioctl(STDIN_FILENO, VT_ACTIVATE, to_tty) == -1)
   {
-    fprintf(stderr, "ioctl() VT_ACTIVATE failed!\n");
+    LogWarn("ioctl() VT_ACTIVATE failed!")
     goto own_tty;
   }
   
@@ -157,7 +166,7 @@ void switch_tty_and_wait(int to_tty)
   
   if (ioctl(STDIN_FILENO, VT_WAITACTIVE, to_tty) == -1)
   {
-    fprintf(stderr, "ioctl() VT_WAITACTIVE %d failed!\n", to_tty);
+    LogWarn("ioctl() VT_WAITACTIVE %d failed!", to_tty)
   }
   
   //fprintf(stderr, "Launched ioctl() VT_WAITACTIVE 1 \n");
@@ -169,7 +178,7 @@ own_tty:
   
   if (ioctl(STDIN_FILENO, VT_SETMODE, &vtmode) == -1)
   {
-    fprintf(stderr, "ioctl() VT_SETMODE failed!\n");
+    LogErr("ioctl() VT_SETMODE failed!")
     exit(1);
   }
   
@@ -178,7 +187,7 @@ own_tty:
   /* Wait until this tty become active again. */
   if (ioctl(STDIN_FILENO, VT_WAITACTIVE, curr_tty_num) == -1)
   {
-    fprintf(stderr, "ioctl() VT_WAITACTIVE %d failed!\n", 2);
+    LogErr("ioctl() VT_WAITACTIVE wait failed!")
     exit(1);
   }
   
@@ -191,12 +200,33 @@ own_tty:
 
 int wait_for_tty_active(int tty_num)
 {
+  struct vt_mode vtm;
+  
+  if (ioctl(STDIN_FILENO, VT_GETMODE, &vtm) == -1)
+  {
+    LogErr("ioctl() VT_GETMODE failed!");
+    exit(1);
+  }
+  
+  vtm.mode = VT_PROCESS;
+  
+  if (ioctl(STDIN_FILENO, VT_SETMODE, &vtm) == -1)
+  {
+    LogMsg("ioctl() VT_SETMODE failed!");
+    exit(1);
+  }
+  LogDbg(1, "Set to VT_PROCESS");
+  
+  LogDbg(1, "Wait until %d become active...", tty_num);
+  
   /* Wait until this tty become active again. */
   if (ioctl(STDIN_FILENO, VT_WAITACTIVE, tty_num) == -1)
   {
-    fprintf(stderr, "ioctl() VT_WAITACTIVE %d failed!\n", 2);
+    LogErr("ioctl() VT_WAITACTIVE %d failed!");
     exit(1);
   }
+  
+  LogDbg(1, "Now is active!");
   
   return 0;
 }
@@ -268,17 +298,16 @@ int detach_tty(void)
 #  endif
 #endif
 
-#define log_err(fmt, ...) { fprintf(stderr, fmt, ##__VA_ARGS__); \
-                            return 1; }
-                            
-#define log_warn(fmt, ...) { fprintf(stderr, fmt, ##__VA_ARGS__); \
-                           }
+#define LogErrAndRet(msg, ...) { \
+  LogErr(msg, ##__VA_ARGS__) \
+  return 1; \
+}
 
 /* Set up tty as stdin, stdout & stderr. */
 int open_tty(char *tty)
 {
 	const pid_t pid = getpid();
-	int closed = 0;
+	//int closed = 0;
 #ifndef KDGKBMODE
 	int serial;
 #endif
@@ -302,7 +331,7 @@ int open_tty(char *tty)
 
 		if (((len = snprintf(buf, sizeof(buf), "/dev/%s", tty)) >=
 		     (int)sizeof(buf)) || (len < 0))
-			log_err( "/dev/%s: cannot open as standard input %m", tty)
+			LogErrAndRet("/dev/%s: cannot open as standard input %m", tty)
 
 		/*
 		 * There is always a race between this reset and the call to
@@ -312,25 +341,25 @@ int open_tty(char *tty)
 		 */
 		if (chown(buf, 0, gid) || chmod(buf, (gid ? 0620 : 0600))) {
 			if (errno == EROFS)
-				log_warn( "%s: %m", buf)
+				LogWarn( "%s: %m", buf)
 			else
-				log_err( "%s: %m", buf)
+				LogErrAndRet( "%s: %m", buf)
 		}
-
+    
 		/* Open the tty as standard input. */
 		if ((fd = open(buf, O_RDWR|O_NOCTTY|O_NONBLOCK, 0)) < 0)
-			log_err( "/dev/%s: cannot open as standard input: %m", tty)
+			LogErrAndRet( "/dev/%s: cannot open as standard input: %m", tty)
 
 		/* Sanity checks... */
 		if (fstat(fd, &st) < 0)
-			log_err( "%s: %m", buf)
+			LogErrAndRet( "%s: %m", buf)
 		if ((st.st_mode & S_IFMT) != S_IFCHR)
-			log_err( "/dev/%s: not a character device", tty)
+			LogErrAndRet( "/dev/%s: not a character device", tty)
 		if (!isatty(fd))
-			log_err( "/dev/%s: not a tty", tty)
+			LogErrAndRet( "/dev/%s: not a tty", tty)
 		if (((tid = tcgetsid(fd)) < 0) || (pid != tid)) {
 			if (ioctl(fd, TIOCSCTTY, 1) == -1)
-				log_warn( "/dev/%s: cannot get controlling tty: %m", tty)
+				LogWarn( "/dev/%s: cannot get controlling tty: %m", tty)
 		}
 
 		close(STDIN_FILENO);
@@ -341,11 +370,11 @@ int open_tty(char *tty)
     fd = open(buf, O_RDWR|O_NOCTTY|O_NONBLOCK, 0);
     
     if (fd != 0)
-			log_err( "/dev/%s: cannot open as standard input: %m", tty)
+			LogErrAndRet( "/dev/%s: cannot open as standard input: %m", tty)
 
 		if (((tid = tcgetsid(STDIN_FILENO)) < 0) || (pid != tid)) {
 			if (ioctl(STDIN_FILENO, TIOCSCTTY, 1) == -1)
-				log_warn( "/dev/%s: cannot get controlling tty: %m", tty)
+				LogWarn( "/dev/%s: cannot get controlling tty: %m", tty)
 		}
     
     flags = fcntl(fd, F_GETFL);
@@ -361,26 +390,24 @@ int open_tty(char *tty)
 
 		if ((fcntl(STDIN_FILENO, F_GETFL, 0) & O_RDWR) != O_RDWR)
     {
-			log_warn( "%s: not open for read/write", tty)
+			LogWarn( "%s: not open for read/write", tty)
     }
 	}
 
 	if (tcsetpgrp(STDIN_FILENO, pid))
-		log_warn( "/dev/%s: cannot set process group: %m", tty)
+		LogWarn( "/dev/%s: cannot set process group: %m", tty)
 
 	/* Get rid of the present outputs. */
-	if (!closed) {
-		close(STDOUT_FILENO);
-		close(STDERR_FILENO);
-		errno = 0;
-	}
+	close(STDOUT_FILENO);
+	close(STDERR_FILENO);
+	errno = 0;
 
 	/* Set up standard output and standard error file descriptors. */
 	//debug("duping\n");
 
 	/* set up stdout and stderr */
 	if (dup(STDIN_FILENO) != 1 || dup(STDIN_FILENO) != 2)
-		log_err( "%s: dup problem: %m", tty)
+		LogErrAndRet( "%s: dup problem: %m", tty)
 
 	/* make stdio unbuffered for slow modem lines */
 	setvbuf(stdout, NULL, _IONBF, 0);
@@ -397,7 +424,7 @@ int open_tty(char *tty)
 	 */
 	memset(tp, 0, sizeof(struct termios));
 	if (tcgetattr(STDIN_FILENO, tp) < 0)
-		log_err( "%s: failed to get terminal attributes: %m", tty)
+		LogErrAndRet( "%s: failed to get terminal attributes: %m", tty)
   
   return 0;
 }

@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 
+LOGIN_MANAGER_LOG_PATH = '/var/log/drlm'
 LOGIN_MANAGER_MOD_PATH = '/opt/home/maverick/work/drm-framebuffer/drm-splash4slack/'
 LOGIN_MANAGER_RES_PATH = '/opt/home/maverick/work/drm-framebuffer/drm-splash4slack/resources/'
 
@@ -7,6 +8,8 @@ import sys
 from time import sleep
 
 sys.path.append(LOGIN_MANAGER_MOD_PATH)
+
+from modules.lmlog.lmlog import *
 
 from modules.lmutils.lmutils import utils
 from modules.lminterface.lminterface import loop_man
@@ -26,14 +29,39 @@ if __name__ == '__main__':
         opts['tty'] = sys.argv[i+1]
         i += 2
       else:
-        print('Missing argument for %s' % sys.argv[i])
+        lmlog_log('Missing argument for %s' % sys.argv[i])
         sys.exit(1)
+    elif sys.argv[i] == '--dbg-level':
+      if i+1 < nargs:
+        opts['debug_level'] = int(sys.argv[i+1])
+        i += 2
+      else:
+        lmlog_log('Missing argument for %s' % sys.argv[i])
+        sys.exit(1)
+    else:
+      i += 1
   
+  #if 'debug_level' in opts:
+  #  drlm_dbg_level = opts['debug_level']
+  #else:
+  #  drlm_dbg_level = 0
+  
+  lm_log_path = '.'
+  if 'tty' in opts:
+    lm_log_path = LOGIN_MANAGER_LOG_PATH
+  
+  # Initialize logger
+  init_lm_log(lm_log_path + '/' + 'drlm.log')
+  
+  # Log start
+  lmlog_log_start()
+  
+  # Initialize Utils
   U = utils()
   
   if 'tty' in opts:
     if U.open_tty(opts['tty']) != 0:
-      print('Error opening tty %s!' % opts['tty'])
+      lmlog_log('Error opening tty %s!' % opts['tty'])
       sleep(5)
       sys.exit(1)
     
@@ -49,6 +77,8 @@ if __name__ == '__main__':
     # Update utmp
     U.update_utmp(opts['tty'])
   
+  # Wait for tty to become active again
+  #U.wait_for_tty(tty_num)
   
   cbuff = b'\x00' * 50
       
@@ -120,6 +150,11 @@ if __name__ == '__main__':
         if 'tty' in opts:
           U.log_btmp(0, opts['tty'], _username)
         
+        if _username is None:
+          lmlog_log('Failed auth')
+        else:
+          lmlog_log('Failed auth for %s' % _username)
+          
         L.show_login_err_msg()
         sleep(3)
         L.reset_if()
@@ -131,6 +166,10 @@ if __name__ == '__main__':
         
         # Set authok
         authok = auth_res
+        
+        # Log successfull auth has succeded
+        lmlog_log('user \'%s\' successfull authenticated.' % 
+          auth_res['res']['pw_name'])
         
         # Quit main loop
         break
@@ -241,6 +280,13 @@ if __name__ == '__main__':
             # Exec default passwd shell
             cmd = '/usr/bin/xinit'
             cmdargs = ['/usr/bin/xinit', '--', 'vt' + str(tty_num)]
+    
+    # Log
+    full_cmd = ''
+    for it in cmdargs:
+      full_cmd += it + ' '
+    lmlog_log('Launching shell \'%s\' for user \'%s\'' % 
+      (full_cmd, username))
     
     # Launch the shell
     os.execv(cmd, cmdargs)
