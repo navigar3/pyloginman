@@ -40,12 +40,7 @@ if __name__ == '__main__':
         sys.exit(1)
     else:
       i += 1
-  
-  #if 'debug_level' in opts:
-  #  drlm_dbg_level = opts['debug_level']
-  #else:
-  #  drlm_dbg_level = 0
-  
+
   lm_log_path = '.'
   if 'tty' in opts:
     lm_log_path = LOGIN_MANAGER_LOG_PATH
@@ -56,6 +51,9 @@ if __name__ == '__main__':
   # Log start
   lmlog_log_start()
   
+  if 'debug_level' in opts:
+    setup_lmlog_dbg_level(opts['debug_level'])
+
   # Initialize Utils
   U = utils()
   
