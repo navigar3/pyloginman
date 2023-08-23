@@ -210,22 +210,23 @@ if __name__ == '__main__':
   
   if 'tty' in opts:
     # Open tty
-    U.open_tty(opts['tty'])
+    #U.open_tty(opts['tty'])
     
     # If USE_PAM_SESSION is True initalize PAM handler 
     #  and start PAM session
     if USE_PAM_SESSION is True:
       if U.pamh.initialize(username, opts['tty']) == 0:
+        #pass
         U.pamh.start_session()
     
     # Log utmp entry
     U.log_utmp(os.getpid(), opts['tty'], username)
     
     # Get tty gid
-    tty_gid = os.stat('/dev/' + opts['tty']).st_gid
+    #tty_gid = os.stat('/dev/' + opts['tty']).st_gid
 
     # Change tty owner
-    os.chown('/dev/' + opts['tty'], uid, tty_gid)
+    #os.chown('/dev/' + opts['tty'], uid, tty_gid)
   
   
   # Fork
@@ -238,6 +239,16 @@ if __name__ == '__main__':
     if 'tty' in opts:
       # Start new session
       os.setsid()
+
+      # Open tty
+      U.open_tty(opts['tty'])
+
+      # Get tty gid
+      tty_gid = os.stat('/dev/' + opts['tty']).st_gid
+
+      # Change tty owner
+      os.chown('/dev/' + opts['tty'], uid, tty_gid)
+
     
     if uid == 0:
       print('Refuse to login as root.')
