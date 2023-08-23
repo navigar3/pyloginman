@@ -17,6 +17,8 @@ from modules.lmauthenticate.lmauthenticate import authenticate_user
 
 tty_num = None
 
+USE_PAM_SESSION = True
+
 if __name__ == '__main__':
 
   # Parse cmdline args
@@ -55,7 +57,7 @@ if __name__ == '__main__':
     setup_lmlog_dbg_level(opts['debug_level'])
 
   # Initialize Utils
-  U = utils()
+  U = utils(use_pam=USE_PAM_SESSION)
   
   if 'tty' in opts:
     if U.open_tty(opts['tty']) != 0:
@@ -203,9 +205,28 @@ if __name__ == '__main__':
   shell = authok['res']['pw_shell']
   home = authok['res']['pw_dir']
   
+  # Try to register supplementary groups
+  os.setgroups(os.getgrouplist(username, gid))
+  
   if 'tty' in opts:
+    # Open tty
+    U.open_tty(opts['tty'])
+    
+    # If USE_PAM_SESSION is True initalize PAM handler 
+    #  and start PAM session
+    if USE_PAM_SESSION is True:
+      if U.pamh.initialize(username, opts['tty']) == 0:
+        U.pamh.start_session()
+    
     # Log utmp entry
     U.log_utmp(os.getpid(), opts['tty'], username)
+    
+    # Get tty gid
+    tty_gid = os.stat('/dev/' + opts['tty']).st_gid
+
+    # Change tty owner
+    os.chown('/dev/' + opts['tty'], uid, tty_gid)
+  
   
   # Fork
   pid = os.fork()
@@ -217,15 +238,6 @@ if __name__ == '__main__':
     if 'tty' in opts:
       # Start new session
       os.setsid()
-      
-      # Open tty
-      U.open_tty(opts['tty'])
-
-      # Get tty gid
-      tty_gid = os.stat('/dev/' + opts['tty']).st_gid
-
-      # Change tty owner
-      os.chown('/dev/' + opts['tty'], uid, tty_gid)
     
     if uid == 0:
       print('Refuse to login as root.')

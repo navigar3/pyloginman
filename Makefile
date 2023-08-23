@@ -3,7 +3,7 @@ LDFLAGS+=
 
 .PHONY: clean
 
-all: modules/drmhandler/drm_handler.so modules/lmutils/utils.so modules/lmlog/log.so
+all: modules/drmhandler/drm_handler.so modules/lmutils/utils.so modules/lmlog/log.so modules/lmutils/pamsession.so
 
 tools/hashtable_dyn.o:
 	$(MAKE) -C tools hashtable_dyn.o
@@ -19,6 +19,9 @@ log.o: log.c
 
 utils.o: utils.c
 	$(CC) -c $(CFLAGS) -o $@ $?
+	
+pamsession.o: pamsession.c
+	$(CC) -c $(CFLAGS) -o $@ $?
 
 modules/lmlog/log.so: log.o
 	$(CC) -shared -o $@ $^ $(LDFLAGS)
@@ -28,6 +31,9 @@ modules/drmhandler/drm_handler.so: drm-doublebuff.o tools/hashtable_dyn.o tools/
 
 modules/lmutils/utils.so: utils.o
 	$(CC) -shared -o $@ $^ $(LDFLAGS)
+
+modules/lmutils/pamsession.so: pamsession.o
+	$(CC) -shared -o $@ $^ $(LDFLAGS) -lpam -lpam_misc
 
 clean:
 	find . -name '*.o' -exec rm {} +

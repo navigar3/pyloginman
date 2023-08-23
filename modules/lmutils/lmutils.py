@@ -4,8 +4,25 @@ from ctypes import *
 
 import os
 
+class pamsess:
+  def __init__(self, libname='pamsession.so', libpath=''):
+    if '__file__' in globals():
+      libpath = os.path.dirname(__file__)
+    
+    fullpath = libpath + '/' + libname
+    
+    # Load library
+    self._lib = cdll.LoadLibrary(fullpath)
+  
+  def initialize(self, username, ttyname):
+    return self._lib.initialize_pam(username.encode(), ttyname.encode())
+  
+  def start_session(self):
+    return self._lib.pam_start_session()
+    
+
 class utils:
-  def __init__(self, libname='utils.so', libpath=''):
+  def __init__(self, use_pam=False, libname='utils.so', libpath=''):
     
     if '__file__' in globals():
       libpath = os.path.dirname(__file__)
@@ -18,6 +35,20 @@ class utils:
     # Set log fd
     set_lmlog_fd(self._lib)
     set_lmlog_dbg_level(self._lib)
+    
+    self._use_pam = use_pam
+    # If use_pam is True load pamsession.so helper
+    if use_pam is True:
+      self.pamh = pamsess()
+  
+  def loadpamh(self, libname='pamsession.so', libpath=''):
+    if '__file__' in globals():
+      libpath = os.path.dirname(__file__)
+    
+    fullpath = libpath + '/' + libname
+    
+    # Load library
+    self._libpam = cdll.LoadLibrary(fullpath)
   
   def open_tty(self, tty):
     return self._lib.open_tty(tty.encode())
