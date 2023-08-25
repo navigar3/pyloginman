@@ -131,8 +131,9 @@ class videodev:
     # Load library
     self._lv = cdll.LoadLibrary(fullpath)
     
-    # Set log fd
+    # Set log fd and dbg level
     set_lmlog_fd(self._lv)
+    set_lmlog_dbg_level(self._lv)
     
     # Initialize device
     self._vd = c_void_p(self._lv.new_drmvideo(self._card_devname))

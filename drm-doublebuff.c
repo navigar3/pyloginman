@@ -360,7 +360,7 @@ int clsm(putc_advance_and_sync,
   /* Check if monitor is enabled */
   if (!(Parent->_enabled))
   {
-    fprintf(stderr, "Cannot draw on disabled monitor!\n");
+    LogWarn("Cannot draw on disabled monitor!")
     return -1;
   }
   
@@ -532,7 +532,7 @@ int clsm(clear_pos, uint32_t sync_now)
   /* Check if monitor is enabled */
   if (!(Parent->_enabled))
   {
-    fprintf(stderr, "Cannot draw on disabled monitor!\n");
+    LogWarn("Cannot draw on disabled monitor!")
     return -1;
   }
   
@@ -743,7 +743,7 @@ int clsm(init, void * init_params)
   this->_glyphs = CALL(this->_font, lookup, ".glyphs");
   if (!this->_glyphs)
   {
-    fprintf(stderr, "Cannot load .glyphs table\n!");
+    LogErr("Cannot load .glyphs table!")
     return 1;
   }
   
@@ -754,10 +754,10 @@ int clsm(init, void * init_params)
                       sizeof(struct vt_tile_status_s));
     
   
-  fprintf(stderr, "New videoterminal for monitor %d\n"
-                  "  terminal rows = %d\n"
-                  "  terminal cols = %d\n", 
-                  Parent->_monID, this->_rows, this->_cols);
+  LogDbg(1, "New videoterminal for monitor %d;"
+            "  terminal rows = %d,"
+            "  terminal cols = %d.", 
+            Parent->_monID, this->_rows, this->_cols)
   
   return 0;
 }
@@ -782,14 +782,14 @@ videoterm * clsm(videoterminal, uint32_t fontID)
 {
   if (this->_vt)
   {
-    fprintf(stderr, "Monitor %d has already a videoterminal!\n",
-                    this->_monID);
+    LogWarn("Monitor %d has already a videoterminal!",
+                    this->_monID)
     return NULL;
   }
   
   if (Parent->_num_of_fonts == 0)
   {
-    fprintf(stderr, "There aren't fonts available!\n");
+    LogWarn("There aren't fonts available!")
     return NULL;
   }
   
@@ -800,7 +800,7 @@ videoterm * clsm(videoterminal, uint32_t fontID)
   
   if (!it)
   {
-    fprintf(stderr, "Font %d not found!\n", fontID);
+    LogWarn("Font %d not found!", fontID)
     return NULL;
   }
   
@@ -820,7 +820,7 @@ int clsm(sync_monitor)
   /* Check if monitor is enabled */
   if (!this->_enabled)
   {
-    fprintf(stderr, "Cannot draw on disabled monitor!\n");
+    LogErr("Cannot draw on disabled monitor!")
     return -1;
   }
   
@@ -849,8 +849,8 @@ int clsm(sync_monitor)
   
   if (ret)
   {
-    fprintf(stderr, "cannot flip CRTC for connector %u (%d): %m\n",
-            this->_dev->conn, errno);
+    LogErr("cannot flip CRTC for connector %u (%d): %m",
+           this->_dev->conn, errno)
     return -1;
   }
   else
@@ -873,8 +873,8 @@ int clsm(_redraw_fb)
                        &this->_dev->conn, 1, &this->_dev->mode);
   if (ret)
   {
-    fprintf(stderr, "cannot flip CRTC for connector %u (%d): %m\n",
-            this->_dev->conn, errno);
+    LogErr("cannot flip CRTC for connector %u (%d): %m\n",
+            this->_dev->conn, errno)
     return -1;
   }
   
@@ -909,8 +909,7 @@ int clsm(_modeset_create_fbs)
     creq.bpp = 32;
     ret = drmIoctl(fd, DRM_IOCTL_MODE_CREATE_DUMB, &creq);
     if (ret < 0) {
-      fprintf(stderr, "cannot create dumb buffer (%d): %m\n",
-        errno);
+      LogErr("cannot create dumb buffer (%d): %m", errno)
       return -errno;
     }
     buf->stride = creq.pitch;
@@ -921,8 +920,7 @@ int clsm(_modeset_create_fbs)
     ret = drmModeAddFB(fd, buf->width, buf->height, 24, 32, buf->stride,
            buf->handle, &buf->fb);
     if (ret) {
-      fprintf(stderr, "cannot create framebuffer (%d): %m\n",
-        errno);
+      LogErr("cannot create framebuffer (%d): %m", errno)
       ret = -errno;
       goto err_destroy;
     }
@@ -932,8 +930,7 @@ int clsm(_modeset_create_fbs)
     mreq.handle = buf->handle;
     ret = drmIoctl(fd, DRM_IOCTL_MODE_MAP_DUMB, &mreq);
     if (ret) {
-      fprintf(stderr, "cannot map dumb buffer (%d): %m\n",
-        errno);
+      LogErr("cannot map dumb buffer (%d): %m", errno)
       ret = -errno;
       goto err_fb;
     }
@@ -942,8 +939,7 @@ int clsm(_modeset_create_fbs)
     buf->map = mmap(0, buf->size, PROT_READ | PROT_WRITE, MAP_SHARED,
               fd, mreq.offset);
     if (buf->map == MAP_FAILED) {
-      fprintf(stderr, "cannot mmap dumb buffer (%d): %m\n",
-        errno);
+      LogErr("cannot mmap dumb buffer (%d): %m", errno)
       ret = -errno;
       goto err_fb;
     }
@@ -999,16 +995,14 @@ int clsm(_initialize_monitor, drmModeConnector * conn)
 	/* check if a monitor is connected */
 	if (conn->connection != DRM_MODE_CONNECTED)
   {
-		fprintf(stderr, "ignoring unused connector %u\n",
-			conn->connector_id);
+		LogWarn("ignoring unused connector %u.", conn->connector_id)
 		return -ENOENT;
 	}
 
 	/* check if there is at least one valid mode */
 	if (conn->count_modes == 0)
   {
-		fprintf(stderr, "no valid mode for connector %u\n",
-			conn->connector_id);
+		LogWarn("no valid mode for connector %u", conn->connector_id)
 		return -EFAULT;
 	}
   
@@ -1029,9 +1023,9 @@ int clsm(_initialize_monitor, drmModeConnector * conn)
 	this->_dev->bufs[2].height = conn->modes[0].vdisplay;
   this->_dev->conn = conn->connector_id;
   
-	fprintf(stderr, "mode for connector %u is %ux%u\n",
-		conn->connector_id, 
-    this->_dev->bufs[0].width, this->_dev->bufs[0].height);
+	LogDbg(1, "mode for connector %u is %ux%u.",
+		     conn->connector_id, 
+         this->_dev->bufs[0].width, this->_dev->bufs[0].height)
   
   return 0;
 }
@@ -1084,12 +1078,12 @@ int clsm(set_backg_image, void * image)
   /* Check if monitor is enabled */
   if (!this->_enabled)
   {
-    fprintf(stderr, "Cannot draw on disabled monitor!\n");
+    LogErr("Cannot draw on disabled monitor!")
     return -1;
   }
   
-  fprintf(stderr, "Copyng background %d x %d\n", this->_width, 
-                  this->_height);
+  LogDbg(1, "Copyng background %d x %d on monitor %d.", 
+         this->_width, this->_height, this->_monID)
   
   CALL(((imagetool *)image), 
        resize, 32, this->_width, this->_height, 
@@ -1111,7 +1105,7 @@ int clsm(draw_rectangle, uint32_t x0, uint32_t y0,
   /* Check if monitor is enabled */
   if (!this->_enabled)
   {
-    fprintf(stderr, "Cannot draw on disabled monitor!\n");
+    LogErr("Cannot draw on disabled monitor!")
     return -1;
   }
   
@@ -1122,7 +1116,7 @@ int clsm(draw_rectangle, uint32_t x0, uint32_t y0,
   if ((y0 >= buf->height) || (y0+rh>=buf->height) ||
       (x0 >= buf->width)  || (x0+rw>=buf->width))
   {
-    fprintf(stderr, "Wrong boundaries for this monitor!\n");
+    LogErr("Wrong boundaries for this monitor!")
     return -1;
   }
   
@@ -1142,8 +1136,8 @@ int clsm(draw_rectangle, uint32_t x0, uint32_t y0,
                        &this->_dev->conn, 1, &this->_dev->mode);
   if (ret)
   {
-    fprintf(stderr, "cannot flip CRTC for connector %u (%d): %m\n",
-            this->_dev->conn, errno);
+    LogErr("cannot flip CRTC for connector %u (%d): %m",
+           this->_dev->conn, errno)
     return -1;
   }
   else
@@ -1197,7 +1191,7 @@ int clsm(clear_scr, uint32_t do_sync)
   /* Check if monitor is enabled */
   if (!this->_enabled)
   {
-    fprintf(stderr, "Cannot draw on disabled monitor!\n");
+    LogErr("Cannot draw on disabled monitor!")
     return -1;
   }
   
@@ -1222,8 +1216,8 @@ int clsm(clear_scr, uint32_t do_sync)
                        &this->_dev->conn, 1, &this->_dev->mode);
   if (ret)
   {
-    fprintf(stderr, "cannot flip CRTC for connector %u (%d): %m\n",
-            this->_dev->conn, errno);
+    LogErr("cannot flip CRTC for connector %u (%d): %m",
+           this->_dev->conn, errno)
     return -1;
   }
   else
@@ -1303,28 +1297,28 @@ int clsm(setup_monitor, uint32_t monID)
   /* Check if monID is available */
   if (monID >= this->_num_of_monitors)
   {
-    fprintf(stderr, "monitor monID is out of range!\n");
+    LogErr("monitor %d is out of range!", monID)
     return -1;
   }
   
   monitor * mon = *(this->_monitors + monID);
   if (!mon)
   {
-    fprintf(stderr, "monitor monID is not available!\n");
+    LogErr("monitor %d is not available!", monID)
     return -1;
   }
   
   if (mon->_ready)
   {
-    fprintf(stderr, "monitor monID is ready!\n");
+    LogErr("Cannot setup monitor %d because is ready!", monID)
     return -1;
   }
   
   /* create framebuffers for this CRTC */
 	ret = CALL(mon, _modeset_create_fbs);
 	if (ret) {
-		fprintf(stderr, "cannot create framebuffers for connector %u\n",
-			mon->_conn->connector_id);
+		LogErr("cannot create framebuffers for connector %u",
+			     mon->_conn->connector_id)
 		return ret;
 	}
   
@@ -1341,26 +1335,26 @@ int clsm(enable_monitor, uint32_t monID)
   /* Check if monID is available */
   if (monID >= this->_num_of_monitors)
   {
-    fprintf(stderr, "monitor monID is out of range!\n");
+    LogErr("monitor %d is out of range!", monID)
     return -1;
   }
   
   monitor * mon = *(this->_monitors + monID);
   if (!mon)
   {
-    fprintf(stderr, "monitor monID is not available!\n");
+    LogErr("monitor %d is not available!", monID)
     return -1;
   }
   
   if(!mon->_ready)
   {
-    fprintf(stderr, "monitor monID is not ready!\n");
+    LogErr("monitor %d is not ready!", monID)
     return -1;
   }
   
   if (mon->_enabled)
   {
-    fprintf(stderr, "monitor monID is already enabled!\n");
+    LogErr("monitor %d is already enabled!", monID)
     return -1;
   }
   
@@ -1375,8 +1369,8 @@ int clsm(enable_monitor, uint32_t monID)
                        1, &(mon->_dev->mode));
   if (ret)
   {
-    fprintf(stderr, "cannot set CRTC for connector %u (%d): %m\n",
-            mon->_dev->conn, errno);
+    LogErr("cannot set CRTC for connector %u (%d): %m",
+           mon->_dev->conn, errno)
     return ret;
   }
   
@@ -1390,7 +1384,7 @@ int clsm(_remove_monitor, uint32_t monID)
 {
   if (monID >= this->_num_of_monitors)
   {
-    fprintf(stderr, "monitor monID is out of range!\n");
+    LogErr("monitor %d is out of range!", monID)
     return -1;
   }
   
@@ -1451,8 +1445,8 @@ int clsm(_modeset_find_crtc, monitor * mon)
 		enc = drmModeGetEncoder(this->_drm_fd, conn->encoders[i]);
 		if (!enc)
     {
-			fprintf(stderr, "cannot retrieve encoder %u:%u (%d): %m\n",
-				i, conn->encoders[i], errno);
+			LogWarn("cannot retrieve encoder %u:%u (%d): %m",
+				      i, conn->encoders[i], errno)
 			continue;
 		}
 
@@ -1487,8 +1481,8 @@ int clsm(_modeset_find_crtc, monitor * mon)
 		drmModeFreeEncoder(enc);
 	}
 
-	fprintf(stderr, "cannot find suitable CRTC for connector %u\n",
-		conn->connector_id);
+	LogErr("cannot find suitable CRTC for connector %u.",
+         conn->connector_id)
 	return -ENOENT;
 }
 
@@ -1504,8 +1498,7 @@ int clsm(_modeset_prepare)
 	/* retrieve resources */
 	res = drmModeGetResources(this->_drm_fd);
 	if (!res) {
-		fprintf(stderr, "cannot retrieve DRM resources (%d): %m\n",
-			errno);
+		LogErr("cannot retrieve DRM resources (%d): %m", errno)
 		return -errno;
 	}
   
@@ -1519,8 +1512,8 @@ int clsm(_modeset_prepare)
 		conn = drmModeGetConnector(this->_drm_fd, res->connectors[i]);
 		if (!conn)
     {
-			fprintf(stderr, "cannot retrieve DRM connector %u:%u (%d): %m\n",
-				i, res->connectors[i], errno);
+			LogWarn("cannot retrieve DRM connector %u:%u (%d): %m",
+				      i, res->connectors[i], errno)
 			continue;
 		}
     
@@ -1569,14 +1562,14 @@ int clsm(_modeset_open)
 	fd = open(this->_card, O_RDWR | O_CLOEXEC);
 	if (fd < 0) {
 		ret = -errno;
-		fprintf(stderr, "cannot open '%s': %m\n", this->_card);
+		LogErr("cannot open '%s': %m", this->_card)
 		return ret;
 	}
 
 	if (drmGetCap(fd, DRM_CAP_DUMB_BUFFER, &has_dumb) < 0 ||
 	    !has_dumb) {
-		fprintf(stderr, "drm device '%s' does not support dumb buffers\n",
-			this->_card);
+		LogErr("drm device '%s' does not support dumb buffers.",
+			     this->_card)
 		close(fd);
 		return -EOPNOTSUPP;
 	}
@@ -1591,7 +1584,7 @@ monitor * clsm(get_monitor_by_ID, uint32_t monID)
 {
   if (monID >= this->_num_of_monitors)
   {
-    fprintf(stderr, "monitor ID out of range!\n");
+    LogErr("monitor ID out of range!")
     return NULL;
   }
   
@@ -1644,20 +1637,20 @@ int clsm(load_font_from_file, char * font_file_name)
   
   if (!f)
   {
-    fprintf(stderr, "Error while creating new font object!\n");
+    LogErr("Error while creating new font object!")
     return 1;
   }
   
   if (CALL(f, loadtables, font_file_name))
   {
-    fprintf(stderr, "Cannot load font from %s!\n", font_file_name);
+    LogErr("Cannot load font from %s!", font_file_name)
     return 1;
   }
   
   hashtable * metrics;
   if (!(metrics = CALL(f, lookup, ".metrics")))
   {
-    fprintf(stderr, "Cannot find metrics table!\n");
+    LogErr("Cannot find metrics table!")
     return 1;
   }
   
@@ -1674,8 +1667,8 @@ int clsm(load_font_from_file, char * font_file_name)
              NULL, &lr)
        )
     {
-      fprintf(stderr, "Cannot find metrics key %s!\n",
-              metrics_data_key[i]);
+      LogErr("Cannot find metrics key %s!",
+             metrics_data_key[i])
       return 1;
     }
     metrics_data[i] = *((uint32_t *)(lr.content));
@@ -1696,13 +1689,13 @@ int clsm(load_font_from_file, char * font_file_name)
   
   this->_num_of_fonts++;
   
-  fprintf(stderr, "Font %s loaded.\n"
-                  "  Box width = %d\n"
-                  "  Box height = %d\n"
-                  "  Ascent = %d\n"
-                  "  Descent = %d\n", font_file_name,
-                  fl->fm.boxwidth, fl->fm.boxheight, 
-                  fl->fm.ascent, fl->fm.descent);
+  LogDbg(1, "Font %s loaded."
+            "  Box width = %d,"
+            "  Box height = %d,"
+            "  Ascent = %d,"
+            "  Descent = %d.", font_file_name,
+            fl->fm.boxwidth, fl->fm.boxheight, 
+            fl->fm.ascent, fl->fm.descent)
   
   return 0;
 }
@@ -1755,7 +1748,7 @@ int clsm(set_backgrounds)
       {
         /* Check if there is another monitor having same sizes 
          *  and avoid resizing image again. */
-        for (int j=0; j<this->_num_of_monitors; j++)
+        for (int j=0; j<i; j++)
         {
           if (*(this->_monitors+j))
             if ((*(this->_monitors+j))->_enabled)
@@ -1764,6 +1757,9 @@ int clsm(set_backgrounds)
                    ( (*(this->_monitors+j))->_height == 
                      (*(this->_monitors+i))->_height ) )
               {
+                LogDbg(1, "Monitor %d and monitor %d have same size. "
+                          "Avoiding resize...", i, j)
+                
                 unsigned int _len = 
                   (*(this->_monitors+j))->_width *
                   (*(this->_monitors+j))->_height * 4;
@@ -1785,8 +1781,8 @@ int clsm(set_backgrounds)
         
         if (_resize_img)
           CALL((*(this->_monitors+i)), set_backg_image, this->_im);
-        else
-          _resize_img = true;
+        
+        _resize_img = true;
       }
       
   /* Now destroy imagetool object */
@@ -1994,7 +1990,7 @@ out_close:
 out_return:
 	if (ret) {
 		errno = -ret;
-		fprintf(stderr, "modeset failed with error %d: %m\n", errno);
+		LogErr("modeset failed with error %d: %m", errno)
   }
 	
   return ret;

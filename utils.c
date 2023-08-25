@@ -32,8 +32,9 @@ void restore_terminal_mode(void)
 {
   tcsetattr(STDIN_FILENO, TCSAFLUSH, &orig_termios);
   
-  if (ioctl(STDIN_FILENO, VT_SETMODE, &orig_vtmode) == -1)
-    LogWarn("ioctl() SETMODE failed!")
+  if ((geteuid() == 0) && (getuid() == 0) && isatty(STDIN_FILENO))
+    if (ioctl(STDIN_FILENO, VT_SETMODE, &orig_vtmode) == -1)
+      LogWarn("ioctl() SETMODE failed!")
 }
 
 /* Set terminal parameters and disable Ctrl+Alt+Fn VT switch. */
@@ -65,7 +66,7 @@ void set_terminal_mode(void)
   
   uint8_t * p = (uint8_t *)(&orig_vtmode);
   for (int i=0; i<sizeof(orig_vtmode); i++)
-    LogDbg(1, "vtmode dumped + %d = %x", i, *(p+i))
+    LogDbg(4, "vtmode dumped + %d = %x", i, *(p+i))
   
   /* Set call to function to restore original terminal params 
    * on exit. */

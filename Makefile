@@ -19,9 +19,9 @@ log.o: log.c
 
 utils.o: utils.c
 	$(CC) -c $(CFLAGS) -o $@ $?
-	
+
 pamsession.o: pamsession.c
-	$(CC) -c $(CFLAGS) -o $@ $?
+	$(CC) -c $(CFLAGS) -DHAVE_SECURITY_PAM_MISC_H -o $@ $?
 
 modules/lmlog/log.so: log.o
 	$(CC) -shared -o $@ $^ $(LDFLAGS)

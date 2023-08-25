@@ -38,10 +38,11 @@ if __name__ == '__main__':
         opts['debug_level'] = int(sys.argv[i+1])
         i += 2
       else:
-        lmlog_log('Missing argument for %s' % sys.argv[i])
+        lmlog_err('Missing argument for %s' % sys.argv[i])
         sys.exit(1)
     else:
-      i += 1
+      lmlog_err('Unrecognized option %s' % sys.argv[i])
+    i += 1
 
   lm_log_path = '.'
   if 'tty' in opts:
@@ -209,9 +210,6 @@ if __name__ == '__main__':
   os.setgroups(os.getgrouplist(username, gid))
   
   if 'tty' in opts:
-    # Open tty
-    #U.open_tty(opts['tty'])
-    
     # If USE_PAM_SESSION is True initalize PAM handler 
     #  and start PAM session
     if USE_PAM_SESSION is True:
@@ -221,13 +219,6 @@ if __name__ == '__main__':
     
     # Log utmp entry
     U.log_utmp(os.getpid(), opts['tty'], username)
-    
-    # Get tty gid
-    #tty_gid = os.stat('/dev/' + opts['tty']).st_gid
-
-    # Change tty owner
-    #os.chown('/dev/' + opts['tty'], uid, tty_gid)
-  
   
   # Fork
   pid = os.fork()
